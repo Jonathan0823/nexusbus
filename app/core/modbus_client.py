@@ -69,29 +69,29 @@ class ModbusSession:
     def read_holding_registers(self, address: int, count: int):
         self.ensure_connection()
         return self._client.read_holding_registers(
-            address=address, count=count, slave=self.slave_id
+            address=address, count=count, unit=self.slave_id
         )
 
     def read_input_registers(self, address: int, count: int):
         self.ensure_connection()
         return self._client.read_input_registers(
-            address=address, count=count, slave=self.slave_id
+            address=address, count=count, unit=self.slave_id
         )
 
     def read_coils(self, address: int, count: int):
         self.ensure_connection()
-        return self._client.read_coils(address=address, count=count, slave=self.slave_id)
+        return self._client.read_coils(address=address, count=count, unit=self.slave_id)
 
     def read_discrete_inputs(self, address: int, count: int):
         self.ensure_connection()
         return self._client.read_discrete_inputs(
-            address=address, count=count, slave=self.slave_id
+            address=address, count=count, unit=self.slave_id
         )
 
     def write_holding_register(self, address: int, value: int):
         self.ensure_connection()
         return self._client.write_register(
-            address=address, value=value, slave=self.slave_id
+            address=address, value=value, unit=self.slave_id
         )
 
     def is_connected(self) -> bool:
