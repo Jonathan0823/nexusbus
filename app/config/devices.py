@@ -6,7 +6,7 @@ from typing import List
 
 from pymodbus.framer import FramerType
 
-from app.core.modbus_client import DeviceConfig, RegisterType
+from app.core.modbus_client import DeviceConfig
 
 # Hard-coded demo devices. Extend or load from external config/db as needed.
 DEVICE_CONFIGS: List[DeviceConfig] = [
@@ -21,13 +21,7 @@ DEVICE_CONFIGS: List[DeviceConfig] = [
 ]
 
 # Polling blueprint describing which registers to refresh periodically.
-DEFAULT_POLL_TARGETS = [
-    {
-        "device_id": "rgv-lithium",
-        "register_type": RegisterType.HOLDING,
-        "address": 0,
-        "count": 4,
-    }
-]
+# Keep empty to disable polling.
+DEFAULT_POLL_TARGETS = []
 
 POLL_INTERVAL_SECONDS = 5
