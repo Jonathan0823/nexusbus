@@ -30,6 +30,7 @@ class DeviceConfig:
     port: int
     slave_id: int
     timeout: int = 3
+    framer: FramerType = FramerType.SOCKET
 
 
 class ModbusSession:
@@ -41,6 +42,7 @@ class ModbusSession:
         port: int,
         slave_id: int,
         timeout: int = 3,
+        framer: FramerType = FramerType.SOCKET,
         client_cls: Type[ModbusTcpClient] = ModbusTcpClient,
     ) -> None:
         self.host = host
@@ -51,7 +53,7 @@ class ModbusSession:
             host,
             port=port,
             timeout=timeout,
-            framer=FramerType.SOCKET,  # default framer for TCP
+            framer=framer,
         )
 
     def connect(self) -> bool:
@@ -126,6 +128,7 @@ class ModbusClientManager:
             port=config.port,
             slave_id=config.slave_id,
             timeout=config.timeout,
+            framer=config.framer,
         )
 
     async def _get_session(self, device_id: str) -> ModbusSession:
