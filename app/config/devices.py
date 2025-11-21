@@ -15,7 +15,7 @@ DEVICE_CONFIGS: List[DeviceConfig] = [
         host="10.19.20.147",
         port=8899,
         slave_id=1,
-        timeout=3,
+        timeout=10,
         framer=FramerType.RTU,
     ),
 ]
