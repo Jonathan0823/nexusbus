@@ -166,9 +166,14 @@ class ModbusClientManager:
         if response.isError():  # type: ignore[attr-defined]
             raise ModbusClientError(str(response))
         if hasattr(response, "registers"):
-            return list(response.registers)
+            registers = list(response.registers)
+            # Ensure we return only the number of registers that were requested
+            # This handles cases where the Modbus device returns more registers than requested
+            return registers[:count]
         if hasattr(response, "bits"):
-            return [int(bit) for bit in response.bits]
+            bits = [int(bit) for bit in response.bits]
+            # Ensure we return only the number of bits that were requested
+            return bits[:count]
         raise ModbusClientError("Unexpected Modbus response format")
 
     async def write_register(
