@@ -30,7 +30,7 @@ async def debug_modbus_device():
             
             # Test 1: Request 1 register
             print("\nRequesting 1 register from address 15:")
-            result1 = client.read_holding_registers(address=15, count=1, device_id=config.slave_id)
+            result1 = client.read_holding_registers(address=15, count=1, slave=config.slave_id)
             if not result1.isError():
                 print(f"  Raw response registers: {result1.registers}")
                 print(f"  Length: {len(result1.registers)}")
@@ -39,7 +39,7 @@ async def debug_modbus_device():
             
             # Test 2: Request 2 registers
             print("\nRequesting 2 registers from address 15:")
-            result2 = client.read_holding_registers(address=15, count=2, device_id=config.slave_id)
+            result2 = client.read_holding_registers(address=15, count=2, slave=config.slave_id)
             if not result2.isError():
                 print(f"  Raw response registers: {result2.registers}")
                 print(f"  Length: {len(result2.registers)}")
@@ -48,7 +48,7 @@ async def debug_modbus_device():
                 
             # Test 3: Request 5 registers
             print("\nRequesting 5 registers from address 15:")
-            result5 = client.read_holding_registers(address=15, count=5, device_id=config.slave_id)
+            result5 = client.read_holding_registers(address=15, count=5, slave=config.slave_id)
             if not result5.isError():
                 print(f"  Raw response registers: {result5.registers}")
                 print(f"  Length: {len(result5.registers)}")
@@ -59,7 +59,7 @@ async def debug_modbus_device():
             print("\n--- Testing other addresses ---")
             for addr in [10, 12, 14, 16, 17]:
                 print(f"\nRequesting 1 register from address {addr}:")
-                result = client.read_holding_registers(address=addr, count=1, device_id=config.slave_id)
+                result = client.read_holding_registers(address=addr, count=1, slave=config.slave_id)
                 if not result.isError():
                     print(f"  Raw response registers: {result.registers}")
                     print(f"  Length: {len(result.registers)}")

@@ -69,31 +69,31 @@ class ModbusSession:
     def read_holding_registers(self, address: int, count: int):
         self.ensure_connection()
         return self._client.read_holding_registers(
-            address=address, count=count, device_id=self.slave_id
+            address=address, count=count, slave=self.slave_id
         )
 
     def read_input_registers(self, address: int, count: int):
         self.ensure_connection()
         return self._client.read_input_registers(
-            address=address, count=count, device_id=self.slave_id
+            address=address, count=count, slave=self.slave_id
         )
 
     def read_coils(self, address: int, count: int):
         self.ensure_connection()
         return self._client.read_coils(
-            address=address, count=count, device_id=self.slave_id
+            address=address, count=count, slave=self.slave_id
         )
 
     def read_discrete_inputs(self, address: int, count: int):
         self.ensure_connection()
         return self._client.read_discrete_inputs(
-            address=address, count=count, device_id=self.slave_id
+            address=address, count=count, slave=self.slave_id
         )
 
     def write_holding_register(self, address: int, value: int):
         self.ensure_connection()
         return self._client.write_register(
-            address=address, value=value, device_id=self.slave_id
+            address=address, value=value, slave=self.slave_id
         )
 
     def is_connected(self) -> bool:
@@ -116,13 +116,15 @@ class ModbusClientManager:
     """Manages Modbus sessions per device and exposes async-friendly helpers."""
 
     def __init__(self, device_configs: Iterable[DeviceConfig]) -> None:
-        self._configs: Dict[str, DeviceConfig] = {cfg.device_id: cfg for cfg in device_configs}
+        self._configs: Dict[str, DeviceConfig] = {
+            cfg.device_id: cfg for cfg in device_configs
+        }
         # Use connection key (host:port:slave_id) instead of just device_id
         # This ensures separate connections for devices with same IP but different slave_id
         self._sessions: Dict[str, ModbusSession] = {}
         self._locks: Dict[str, asyncio.Lock] = {}
         self._manager_lock = asyncio.Lock()
-    
+
     def _get_connection_key(self, config: DeviceConfig) -> str:
         """Generate unique connection key for host:port:slave_id combination."""
         return f"{config.host}:{config.port}:{config.slave_id}"
@@ -144,7 +146,7 @@ class ModbusClientManager:
             config = self._configs.get(device_id)
             if not config:
                 raise DeviceNotFoundError(f"Unknown device_id '{device_id}'")
-            
+
             conn_key = self._get_connection_key(config)
             if conn_key not in self._sessions:
                 self._sessions[conn_key] = self._create_session(device_id)
