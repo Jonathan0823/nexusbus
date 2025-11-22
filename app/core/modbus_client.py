@@ -117,9 +117,15 @@ class ModbusClientManager:
 
     def __init__(self, device_configs: Iterable[DeviceConfig]) -> None:
         self._configs: Dict[str, DeviceConfig] = {cfg.device_id: cfg for cfg in device_configs}
+        # Use connection key (host:port:slave_id) instead of just device_id
+        # This ensures separate connections for devices with same IP but different slave_id
         self._sessions: Dict[str, ModbusSession] = {}
         self._locks: Dict[str, asyncio.Lock] = {}
         self._manager_lock = asyncio.Lock()
+    
+    def _get_connection_key(self, config: DeviceConfig) -> str:
+        """Generate unique connection key for host:port:slave_id combination."""
+        return f"{config.host}:{config.port}:{config.slave_id}"
 
     def _create_session(self, device_id: str) -> ModbusSession:
         config = self._configs.get(device_id)
@@ -135,14 +141,21 @@ class ModbusClientManager:
 
     async def _get_session(self, device_id: str) -> ModbusSession:
         async with self._manager_lock:
-            if device_id not in self._sessions:
-                self._sessions[device_id] = self._create_session(device_id)
-                self._locks[device_id] = asyncio.Lock()
-            return self._sessions[device_id]
+            config = self._configs.get(device_id)
+            if not config:
+                raise DeviceNotFoundError(f"Unknown device_id '{device_id}'")
+            
+            conn_key = self._get_connection_key(config)
+            if conn_key not in self._sessions:
+                self._sessions[conn_key] = self._create_session(device_id)
+                self._locks[conn_key] = asyncio.Lock()
+            return self._sessions[conn_key]
 
     async def _run_with_session(self, device_id: str, func_name: str, *args, **kwargs):
         session = await self._get_session(device_id)
-        lock = self._locks[device_id]
+        config = self._configs[device_id]
+        conn_key = self._get_connection_key(config)
+        lock = self._locks[conn_key]
         async with lock:
             method = getattr(session, func_name)
             try:
