@@ -18,6 +18,14 @@ DEVICE_CONFIGS: List[DeviceConfig] = [
         timeout=10,
         framer=FramerType.RTU,
     ),
+    DeviceConfig(
+        device_id="circular-energy",
+        host="10.19.20.148",
+        port=8899,
+        slave_id=1,
+        timeout=10,
+        framer=FramerType.RTU,
+    ),
 ]
 
 # Polling blueprint describing which registers to refresh periodically.
