@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import logging
+import time
 from dataclasses import dataclass
 from enum import Enum
 from typing import Dict, Iterable, List, Optional, Tuple, Type
@@ -10,6 +12,8 @@ from typing import Dict, Iterable, List, Optional, Tuple, Type
 from pymodbus.client import ModbusTcpClient
 from pymodbus.exceptions import ModbusException
 from pymodbus.framer import FramerType
+
+logger = logging.getLogger(__name__)
 
 
 class RegisterType(str, Enum):
@@ -31,24 +35,31 @@ class DeviceConfig:
     slave_id: int
     timeout: int = 3
     framer: FramerType = FramerType.SOCKET
+    max_retries: int = 5
+    retry_delay: float = 0.1
 
 
-class ModbusSession:
-    """Encapsulates Modbus client lifecycle and basic operations."""
+class ModbusGateway:
+    """
+    Encapsulates a shared Modbus TCP connection to a gateway/host.
+    Serves multiple slave_ids behind the same IP:Port.
+    """
 
     def __init__(
         self,
         host: str,
         port: int,
-        slave_id: int,
         timeout: int = 3,
         framer: FramerType = FramerType.SOCKET,
+        max_retries: int = 5,
+        retry_delay: float = 0.1,
         client_cls: Type[ModbusTcpClient] = ModbusTcpClient,
     ) -> None:
         self.host = host
         self.port = port
-        self.slave_id = slave_id
         self.timeout = timeout
+        self.max_retries = max_retries
+        self.retry_delay = retry_delay
         self._client = client_cls(
             host,
             port=port,
@@ -63,38 +74,107 @@ class ModbusSession:
         if not self.is_connected():
             if not self.connect():
                 raise ConnectionError(
-                    f"Unable to connect to Modbus device {self.host}:{self.port}"
+                    f"Unable to connect to Modbus gateway {self.host}:{self.port}"
                 )
 
-    def read_holding_registers(self, address: int, count: int):
-        self.ensure_connection()
-        return self._client.read_holding_registers(
-            address=address, count=count, slave=self.slave_id
-        )
+    def _is_valid_response(self, response, operation: str, slave_id: int) -> bool:
+        """Check if response is valid (not error and correct slave_id)."""
+        # Check if response is error (pymodbus skips wrong slave_id responses internally)
+        if hasattr(response, 'isError') and response.isError():
+            logger.info(
+                f"{operation}: Got error response for slave_id={slave_id} "
+                f"(likely wrong slave_id skipped by pymodbus), retrying..."
+            )
+            return False
+        
+        # Additional check for slave_id if available
+        if hasattr(response, 'slave_id') and response.slave_id != slave_id:
+            logger.warning(
+                f"{operation}: request for slave_id={slave_id} but got slave_id={response.slave_id}. Retrying..."
+            )
+            return False
+        return True
 
-    def read_input_registers(self, address: int, count: int):
+    def read_holding_registers(self, slave_id: int, address: int, count: int):
         self.ensure_connection()
-        return self._client.read_input_registers(
-            address=address, count=count, slave=self.slave_id
-        )
+        last_response = None
+        for attempt in range(self.max_retries):
+            response = self._client.read_holding_registers(
+                address=address, count=count, slave=slave_id
+            )
+            last_response = response
+            if self._is_valid_response(response, "read_holding_registers", slave_id):
+                if attempt > 0:
+                    logger.info(f"read_holding_registers succeeded after {attempt + 1} attempts for slave_id={slave_id}")
+                return response
+            if attempt < self.max_retries - 1:
+                logger.info(f"read_holding_registers retry {attempt + 1}/{self.max_retries} for slave_id={slave_id}")
+                time.sleep(self.retry_delay)
+        logger.warning(f"read_holding_registers failed after {self.max_retries} attempts for slave_id={slave_id}")
+        return last_response
 
-    def read_coils(self, address: int, count: int):
+    def read_input_registers(self, slave_id: int, address: int, count: int):
         self.ensure_connection()
-        return self._client.read_coils(
-            address=address, count=count, slave=self.slave_id
-        )
+        last_response = None
+        for attempt in range(self.max_retries):
+            response = self._client.read_input_registers(
+                address=address, count=count, slave=slave_id
+            )
+            last_response = response
+            if self._is_valid_response(response, "read_input_registers", slave_id):
+                if attempt > 0:
+                    logger.info(f"read_input_registers succeeded after {attempt + 1} attempts for slave_id={slave_id}")
+                return response
+            if attempt < self.max_retries - 1:
+                logger.info(f"read_input_registers retry {attempt + 1}/{self.max_retries} for slave_id={slave_id}")
+                time.sleep(self.retry_delay)
+        logger.warning(f"read_input_registers failed after {self.max_retries} attempts for slave_id={slave_id}")
+        return last_response
 
-    def read_discrete_inputs(self, address: int, count: int):
+    def read_coils(self, slave_id: int, address: int, count: int):
         self.ensure_connection()
-        return self._client.read_discrete_inputs(
-            address=address, count=count, slave=self.slave_id
-        )
+        last_response = None
+        for attempt in range(self.max_retries):
+            response = self._client.read_coils(
+                address=address, count=count, slave=slave_id
+            )
+            last_response = response
+            if self._is_valid_response(response, "read_coils", slave_id):
+                return response
+            if attempt < self.max_retries - 1:
+                logger.debug(f"Retry {attempt + 1}/{self.max_retries} for slave_id={slave_id}")
+                time.sleep(self.retry_delay)
+        return last_response
 
-    def write_holding_register(self, address: int, value: int):
+    def read_discrete_inputs(self, slave_id: int, address: int, count: int):
         self.ensure_connection()
-        return self._client.write_register(
-            address=address, value=value, slave=self.slave_id
-        )
+        last_response = None
+        for attempt in range(self.max_retries):
+            response = self._client.read_discrete_inputs(
+                address=address, count=count, slave=slave_id
+            )
+            last_response = response
+            if self._is_valid_response(response, "read_discrete_inputs", slave_id):
+                return response
+            if attempt < self.max_retries - 1:
+                logger.debug(f"Retry {attempt + 1}/{self.max_retries} for slave_id={slave_id}")
+                time.sleep(self.retry_delay)
+        return last_response
+
+    def write_holding_register(self, slave_id: int, address: int, value: int):
+        self.ensure_connection()
+        last_response = None
+        for attempt in range(self.max_retries):
+            response = self._client.write_register(
+                address=address, value=value, slave=slave_id
+            )
+            last_response = response
+            if self._is_valid_response(response, "write_holding_register", slave_id):
+                return response
+            if attempt < self.max_retries - 1:
+                logger.debug(f"Retry {attempt + 1}/{self.max_retries} for slave_id={slave_id}")
+                time.sleep(self.retry_delay)
+        return last_response
 
     def is_connected(self) -> bool:
         return bool(self._client and self._client.is_socket_open())
@@ -113,66 +193,69 @@ class DeviceNotFoundError(ModbusClientError):
 
 
 class ModbusClientManager:
-    """Manages Modbus sessions per device and exposes async-friendly helpers."""
+    """
+    Manages Modbus gateways and exposes device-centric helpers.
+    Ensures only one connection exists per (Host, Port).
+    """
 
     def __init__(self, device_configs: Iterable[DeviceConfig]) -> None:
         self._configs: Dict[str, DeviceConfig] = {
             cfg.device_id: cfg for cfg in device_configs
         }
-        # Use connection key (host:port:slave_id) instead of just device_id
-        # This ensures separate connections for devices with same IP but different slave_id
-        self._sessions: Dict[str, ModbusSession] = {}
-        self._locks: Dict[str, asyncio.Lock] = {}
+        # Map (host, port) -> ModbusGateway
+        self._gateways: Dict[Tuple[str, int], ModbusGateway] = {}
+        # Map (host, port) -> Lock
+        self._locks: Dict[Tuple[str, int], asyncio.Lock] = {}
         self._manager_lock = asyncio.Lock()
 
-    def _get_connection_key(self, config: DeviceConfig) -> str:
-        """Generate unique connection key for host:port:slave_id combination."""
-        return f"{config.host}:{config.port}:{config.slave_id}"
+    def _create_gateway(self, config: DeviceConfig) -> ModbusGateway:
+        return ModbusGateway(
+            host=config.host,
+            port=config.port,
+            timeout=config.timeout,
+            framer=config.framer,
+            max_retries=config.max_retries,
+            retry_delay=config.retry_delay,
+        )
 
-    def _create_session(self, device_id: str) -> ModbusSession:
+    async def _get_gateway_and_lock(self, device_id: str) -> Tuple[ModbusGateway, asyncio.Lock]:
         config = self._configs.get(device_id)
         if not config:
             raise DeviceNotFoundError(f"Unknown device_id '{device_id}'")
-        return ModbusSession(
-            host=config.host,
-            port=config.port,
-            slave_id=config.slave_id,
-            timeout=config.timeout,
-            framer=config.framer,
-        )
-
-    async def _get_session(self, device_id: str) -> ModbusSession:
+        
+        key = (config.host, config.port)
+        
         async with self._manager_lock:
-            config = self._configs.get(device_id)
-            if not config:
-                raise DeviceNotFoundError(f"Unknown device_id '{device_id}'")
+            if key not in self._gateways:
+                self._gateways[key] = self._create_gateway(config)
+                self._locks[key] = asyncio.Lock()
+            return self._gateways[key], self._locks[key]
 
-            conn_key = self._get_connection_key(config)
-            if conn_key not in self._sessions:
-                self._sessions[conn_key] = self._create_session(device_id)
-                self._locks[conn_key] = asyncio.Lock()
-            return self._sessions[conn_key]
+    async def _run_with_gateway(self, device_id: str, func_name: str, *args, **kwargs):
+        config = self._configs.get(device_id)
+        if not config:
+            raise DeviceNotFoundError(f"Unknown device_id '{device_id}'")
 
-    async def _run_with_session(self, device_id: str, func_name: str, *args, **kwargs):
-        session = await self._get_session(device_id)
-        config = self._configs[device_id]
-        conn_key = self._get_connection_key(config)
-        lock = self._locks[conn_key]
+        gateway, lock = await self._get_gateway_and_lock(device_id)
+        
+        # Inject slave_id as the first argument to the gateway method
+        slave_id = config.slave_id
+        
         async with lock:
-            method = getattr(session, func_name)
+            method = getattr(gateway, func_name)
             try:
-                return await asyncio.to_thread(method, *args, **kwargs)
+                return await asyncio.to_thread(method, slave_id, *args, **kwargs)
             except ModbusException as exc:
                 raise ModbusClientError(str(exc)) from exc
             except ConnectionError:
                 # retry once after reconnecting
-                session.close()
-                if not session.connect():
+                gateway.close()
+                if not gateway.connect():
                     raise ModbusClientError(
-                        f"Failed to connect to device '{device_id}'"
+                        f"Failed to connect to gateway '{config.host}:{config.port}'"
                     ) from None
-                method = getattr(session, func_name)
-                return await asyncio.to_thread(method, *args, **kwargs)
+                method = getattr(gateway, func_name)
+                return await asyncio.to_thread(method, slave_id, *args, **kwargs)
 
     async def read_registers(
         self, device_id: str, register_type: RegisterType, address: int, count: int
@@ -182,12 +265,9 @@ class ModbusClientManager:
             raise ModbusClientError(str(response))
         if hasattr(response, "registers"):
             registers = list(response.registers)
-            # Ensure we return only the number of registers that were requested
-            # This handles cases where the Modbus device returns more registers than requested
             return registers[:count]
         if hasattr(response, "bits"):
             bits = [int(bit) for bit in response.bits]
-            # Ensure we return only the number of bits that were requested
             return bits[:count]
         raise ModbusClientError("Unexpected Modbus response format")
 
@@ -196,7 +276,7 @@ class ModbusClientManager:
     ) -> None:
         if register_type is not RegisterType.HOLDING:
             raise ModbusClientError("Writing is only supported for holding registers")
-        response = await self._run_with_session(
+        response = await self._run_with_gateway(
             device_id, "write_holding_register", address, value
         )
         if response.isError():  # type: ignore[attr-defined]
@@ -211,12 +291,12 @@ class ModbusClientManager:
             RegisterType.COIL: "read_coils",
             RegisterType.DISCRETE: "read_discrete_inputs",
         }[register_type]
-        return await self._run_with_session(device_id, method_name, address, count)
+        return await self._run_with_gateway(device_id, method_name, address, count)
 
     async def close_all(self) -> None:
-        for session in self._sessions.values():
-            await asyncio.to_thread(session.close)
-        self._sessions.clear()
+        for gateway in self._gateways.values():
+            await asyncio.to_thread(gateway.close)
+        self._gateways.clear()
         self._locks.clear()
 
     def list_devices(self) -> Tuple[str, ...]:
@@ -224,3 +304,15 @@ class ModbusClientManager:
 
     def get_config(self, device_id: str) -> Optional[DeviceConfig]:
         return self._configs.get(device_id)
+
+    def get_gateways_status(self) -> List[dict]:
+        """Return status of all active gateways."""
+        status_list = []
+        for (host, port), gateway in self._gateways.items():
+            status_list.append({
+                "host": host,
+                "port": port,
+                "connected": gateway.is_connected(),
+            })
+        return status_list
+

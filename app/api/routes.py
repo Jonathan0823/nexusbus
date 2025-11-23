@@ -30,9 +30,18 @@ async def list_devices() -> List[dict]:
             "port": cfg.port,
             "slave_id": cfg.slave_id,
             "timeout": cfg.timeout,
+            "gateway": f"{cfg.host}:{cfg.port}",
         }
         for cfg in DEVICE_CONFIGS
     ]
+
+
+@router.get("/gateways", tags=["system"])
+async def list_gateways(
+    manager: ModbusClientManager = Depends(get_modbus_manager),
+) -> List[dict]:
+    """List all active Modbus gateways and their connection status."""
+    return manager.get_gateways_status()
 
 
 @router.get("/{device_id}/registers")
