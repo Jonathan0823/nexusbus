@@ -18,6 +18,25 @@ DEVICE_CONFIGS: List[DeviceConfig] = [
         timeout=10,
         framer=FramerType.RTU,
     ),
+    # The following two devices share the same IP:Port (Gateway).
+    # The ModbusClientManager will automatically share a single TCP connection
+    # and serialize requests to prevent slave ID mismatches.
+    DeviceConfig(
+        device_id="office-eng",
+        host="10.19.20.148",
+        port=8899,
+        slave_id=1,
+        timeout=10,
+        framer=FramerType.RTU,
+    ),
+    DeviceConfig(
+        device_id="formation",
+        host="10.19.20.148",
+        port=8899,
+        slave_id=2,
+        timeout=10,
+        framer=FramerType.RTU,
+    ),
 ]
 
 # Polling blueprint describing which registers to refresh periodically.
