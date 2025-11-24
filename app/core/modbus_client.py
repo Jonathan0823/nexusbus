@@ -99,17 +99,25 @@ class ModbusGateway:
         self.ensure_connection()
         last_response = None
         for attempt in range(self.max_retries):
-            response = self._client.read_holding_registers(
-                address=address, count=count, slave=slave_id
-            )
-            last_response = response
-            if self._is_valid_response(response, "read_holding_registers", slave_id):
-                if attempt > 0:
-                    logger.info(f"read_holding_registers succeeded after {attempt + 1} attempts for slave_id={slave_id}")
-                return response
+            try:
+                response = self._client.read_holding_registers(
+                    address=address, count=count, slave=slave_id
+                )
+                last_response = response
+                if self._is_valid_response(response, "read_holding_registers", slave_id):
+                    if attempt > 0:
+                        logger.info(f"read_holding_registers succeeded after {attempt + 1} attempts for slave_id={slave_id}")
+                    return response
+            except ModbusException as exc:
+                logger.warning(f"read_holding_registers exception for slave_id={slave_id}: {exc}. Retrying...")
+                self.close()
+                if attempt < self.max_retries - 1:
+                    self.ensure_connection()
+            
             if attempt < self.max_retries - 1:
                 logger.info(f"read_holding_registers retry {attempt + 1}/{self.max_retries} for slave_id={slave_id}")
                 time.sleep(self.retry_delay)
+        
         logger.warning(f"read_holding_registers failed after {self.max_retries} attempts for slave_id={slave_id}")
         return last_response
 
@@ -117,14 +125,21 @@ class ModbusGateway:
         self.ensure_connection()
         last_response = None
         for attempt in range(self.max_retries):
-            response = self._client.read_input_registers(
-                address=address, count=count, slave=slave_id
-            )
-            last_response = response
-            if self._is_valid_response(response, "read_input_registers", slave_id):
-                if attempt > 0:
-                    logger.info(f"read_input_registers succeeded after {attempt + 1} attempts for slave_id={slave_id}")
-                return response
+            try:
+                response = self._client.read_input_registers(
+                    address=address, count=count, slave=slave_id
+                )
+                last_response = response
+                if self._is_valid_response(response, "read_input_registers", slave_id):
+                    if attempt > 0:
+                        logger.info(f"read_input_registers succeeded after {attempt + 1} attempts for slave_id={slave_id}")
+                    return response
+            except ModbusException as exc:
+                logger.warning(f"read_input_registers exception for slave_id={slave_id}: {exc}. Retrying...")
+                self.close()
+                if attempt < self.max_retries - 1:
+                    self.ensure_connection()
+
             if attempt < self.max_retries - 1:
                 logger.info(f"read_input_registers retry {attempt + 1}/{self.max_retries} for slave_id={slave_id}")
                 time.sleep(self.retry_delay)
@@ -135,12 +150,19 @@ class ModbusGateway:
         self.ensure_connection()
         last_response = None
         for attempt in range(self.max_retries):
-            response = self._client.read_coils(
-                address=address, count=count, slave=slave_id
-            )
-            last_response = response
-            if self._is_valid_response(response, "read_coils", slave_id):
-                return response
+            try:
+                response = self._client.read_coils(
+                    address=address, count=count, slave=slave_id
+                )
+                last_response = response
+                if self._is_valid_response(response, "read_coils", slave_id):
+                    return response
+            except ModbusException as exc:
+                logger.warning(f"read_coils exception for slave_id={slave_id}: {exc}. Retrying...")
+                self.close()
+                if attempt < self.max_retries - 1:
+                    self.ensure_connection()
+
             if attempt < self.max_retries - 1:
                 logger.debug(f"Retry {attempt + 1}/{self.max_retries} for slave_id={slave_id}")
                 time.sleep(self.retry_delay)
@@ -150,12 +172,19 @@ class ModbusGateway:
         self.ensure_connection()
         last_response = None
         for attempt in range(self.max_retries):
-            response = self._client.read_discrete_inputs(
-                address=address, count=count, slave=slave_id
-            )
-            last_response = response
-            if self._is_valid_response(response, "read_discrete_inputs", slave_id):
-                return response
+            try:
+                response = self._client.read_discrete_inputs(
+                    address=address, count=count, slave=slave_id
+                )
+                last_response = response
+                if self._is_valid_response(response, "read_discrete_inputs", slave_id):
+                    return response
+            except ModbusException as exc:
+                logger.warning(f"read_discrete_inputs exception for slave_id={slave_id}: {exc}. Retrying...")
+                self.close()
+                if attempt < self.max_retries - 1:
+                    self.ensure_connection()
+
             if attempt < self.max_retries - 1:
                 logger.debug(f"Retry {attempt + 1}/{self.max_retries} for slave_id={slave_id}")
                 time.sleep(self.retry_delay)
@@ -165,12 +194,19 @@ class ModbusGateway:
         self.ensure_connection()
         last_response = None
         for attempt in range(self.max_retries):
-            response = self._client.write_register(
-                address=address, value=value, slave=slave_id
-            )
-            last_response = response
-            if self._is_valid_response(response, "write_holding_register", slave_id):
-                return response
+            try:
+                response = self._client.write_register(
+                    address=address, value=value, slave=slave_id
+                )
+                last_response = response
+                if self._is_valid_response(response, "write_holding_register", slave_id):
+                    return response
+            except ModbusException as exc:
+                logger.warning(f"write_holding_register exception for slave_id={slave_id}: {exc}. Retrying...")
+                self.close()
+                if attempt < self.max_retries - 1:
+                    self.ensure_connection()
+
             if attempt < self.max_retries - 1:
                 logger.debug(f"Retry {attempt + 1}/{self.max_retries} for slave_id={slave_id}")
                 time.sleep(self.retry_delay)
