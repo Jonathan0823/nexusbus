@@ -44,3 +44,7 @@ DEVICE_CONFIGS: List[DeviceConfig] = [
 DEFAULT_POLL_TARGETS = []
 
 POLL_INTERVAL_SECONDS = 5
+
+# API request timeout in seconds
+# If a Modbus request takes longer than this, it will timeout and reset the connection
+API_REQUEST_TIMEOUT_SECONDS = 5

@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-from app.config.devices import DEVICE_CONFIGS
+from app.config.devices import API_REQUEST_TIMEOUT_SECONDS, DEVICE_CONFIGS
 from app.core.cache import RegisterCache
 from app.core.modbus_client import (
     DeviceNotFoundError,
@@ -71,7 +72,20 @@ async def read_registers(
                 )
             used_source = CacheSource.LIVE
 
-        data = await manager.read_registers(device_id, register_type, address, count)
+        # Wrap Modbus operation with timeout
+        try:
+            data = await asyncio.wait_for(
+                manager.read_registers(device_id, register_type, address, count),
+                timeout=API_REQUEST_TIMEOUT_SECONDS
+            )
+        except asyncio.TimeoutError:
+            # Reset the gateway connection on timeout
+            await manager.reset_gateway(device_id)
+            raise HTTPException(
+                status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+                detail=f"Request timeout after {API_REQUEST_TIMEOUT_SECONDS} seconds. Connection reset."
+            )
+        
         await cache.set(device_id, register_type, address, count, data)
         return _serialize_read_response(
             device_id,
@@ -96,19 +110,35 @@ async def write_register(
     cache: RegisterCache = Depends(get_cache),
 ) -> dict:
     try:
-        await manager.write_register(
-            device_id,
-            payload.register_type,
-            payload.address,
-            payload.value,
-        )
-        # refresh cache for that register if available
-        data = await manager.read_registers(
-            device_id,
-            payload.register_type,
-            payload.address,
-            1,
-        )
+        # Wrap Modbus operations with timeout
+        try:
+            await asyncio.wait_for(
+                manager.write_register(
+                    device_id,
+                    payload.register_type,
+                    payload.address,
+                    payload.value,
+                ),
+                timeout=API_REQUEST_TIMEOUT_SECONDS
+            )
+            # refresh cache for that register if available
+            data = await asyncio.wait_for(
+                manager.read_registers(
+                    device_id,
+                    payload.register_type,
+                    payload.address,
+                    1,
+                ),
+                timeout=API_REQUEST_TIMEOUT_SECONDS
+            )
+        except asyncio.TimeoutError:
+            # Reset the gateway connection on timeout
+            await manager.reset_gateway(device_id)
+            raise HTTPException(
+                status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+                detail=f"Request timeout after {API_REQUEST_TIMEOUT_SECONDS} seconds. Connection reset."
+            )
+        
         await cache.set(
             device_id,
             payload.register_type,
