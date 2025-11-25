@@ -13,10 +13,12 @@ from app.config.devices import (
     DEFAULT_POLL_TARGETS,
     DEVICE_CONFIGS,
     POLL_INTERVAL_SECONDS,
+    load_device_configs,
 )
 from app.core.cache import RegisterCache
 from app.core.modbus_client import ModbusClientManager
 from app.services.poller import poll_registers
+from app.database.connection import create_db_and_tables, close_db, async_session_maker
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -36,7 +38,23 @@ app.include_router(admin_router, prefix="/api")
 @app.on_event("startup")
 async def on_startup() -> None:
     logger.info("Starting Modbus middleware service")
-    app.state.modbus_manager = ModbusClientManager(DEVICE_CONFIGS)
+    
+    # Initialize database
+    try:
+        logger.info("Creating database tables...")
+        await create_db_and_tables()
+        logger.info("Database initialized")
+        
+        # Load devices from database
+        async with async_session_maker() as session:
+            device_configs = await load_device_configs(session)
+        logger.info(f"Loaded {len(device_configs)} device(s) from database")
+    except Exception as e:
+        logger.warning(f"Database initialization failed: {e}. Using hardcoded configs.")
+        device_configs = DEVICE_CONFIGS
+    
+    # Initialize Modbus manager with loaded configs
+    app.state.modbus_manager = ModbusClientManager(device_configs)
     app.state.register_cache = RegisterCache()
 
     if DEFAULT_POLL_TARGETS:
@@ -71,8 +89,13 @@ async def on_shutdown() -> None:
     await manager.close_all()
     cache: RegisterCache = app.state.register_cache
     await cache.clear()
+    
+    # Close database connections
+    await close_db()
+    logger.info("Database connections closed")
 
 
 @app.get("/health", tags=["system"])
 async def healthcheck() -> dict:
     return {"status": "ok"}
+
