@@ -8,6 +8,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes import router as devices_router
+from app.api.admin_routes import router as admin_router
 from app.config.devices import (
     DEFAULT_POLL_TARGETS,
     DEVICE_CONFIGS,
@@ -29,6 +30,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.include_router(devices_router, prefix="/api")
+app.include_router(admin_router, prefix="/api")
 
 
 @app.on_event("startup")
