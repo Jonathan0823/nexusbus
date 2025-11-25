@@ -349,6 +349,26 @@ class ModbusClientManager:
                 del self._locks[key]
                 logger.info(f"Reset gateway {config.host}:{config.port} for device '{device_id}'")
 
+    async def reload_configs(self, new_configs: Iterable[DeviceConfig]) -> None:
+        """Reload device configurations dynamically.
+        
+        This closes connections for removed devices and updates the config map.
+        """
+        old_device_ids = set(self._configs.keys())
+        new_device_ids = {cfg.device_id for cfg in new_configs}
+        removed = old_device_ids - new_device_ids
+        
+        # Close gateways for removed devices
+        for device_id in removed:
+            try:
+                await self.reset_gateway(device_id)
+            except DeviceNotFoundError:
+                pass  # Already removed
+        
+        # Update configs
+        self._configs = {cfg.device_id: cfg for cfg in new_configs}
+        logger.info(f"Reloaded {len(new_configs)} device config(s)")
+
     async def close_all(self) -> None:
         for gateway in self._gateways.values():
             await asyncio.to_thread(gateway.close)
