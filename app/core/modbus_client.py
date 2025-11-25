@@ -329,6 +329,26 @@ class ModbusClientManager:
         }[register_type]
         return await self._run_with_gateway(device_id, method_name, address, count)
 
+    async def reset_gateway(self, device_id: str) -> None:
+        """Reset (close and remove) the gateway for a specific device.
+        
+        This is useful when a connection becomes unresponsive.
+        The next request will create a fresh connection.
+        """
+        config = self._configs.get(device_id)
+        if not config:
+            raise DeviceNotFoundError(f"Unknown device_id '{device_id}'")
+        
+        key = (config.host, config.port)
+        
+        async with self._manager_lock:
+            if key in self._gateways:
+                gateway = self._gateways[key]
+                await asyncio.to_thread(gateway.close)
+                del self._gateways[key]
+                del self._locks[key]
+                logger.info(f"Reset gateway {config.host}:{config.port} for device '{device_id}'")
+
     async def close_all(self) -> None:
         for gateway in self._gateways.values():
             await asyncio.to_thread(gateway.close)
