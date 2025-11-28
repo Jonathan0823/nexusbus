@@ -10,8 +10,9 @@ from enum import Enum
 from typing import Dict, Iterable, List, Optional, Tuple, Type
 
 from pymodbus.client import ModbusTcpClient
-from pymodbus.exceptions import ModbusException
+from pymodbus.exceptions import ModbusException, ModbusIOException
 from pymodbus.framer import FramerType
+from pymodbus.pdu import ExceptionResponse
 
 logger = logging.getLogger(__name__)
 
@@ -79,12 +80,33 @@ class ModbusGateway:
 
     def _is_valid_response(self, response, operation: str, slave_id: int) -> bool:
         """Check if response is valid (not error and correct slave_id)."""
+        # Check for None response (timeout or connection issue)
+        if response is None:
+            logger.warning(f"{operation}: Got None response for slave_id={slave_id}, retrying...")
+            return False
+        
+        # Check if response is ExceptionResponse (includes CRC errors)
+        if isinstance(response, ExceptionResponse):
+            logger.warning(
+                f"{operation}: Got exception response for slave_id={slave_id} "
+                f"(exception_code={response.exception_code}), retrying..."
+            )
+            return False
+        
         # Check if response is error (pymodbus skips wrong slave_id responses internally)
         if hasattr(response, 'isError') and response.isError():
-            logger.info(
-                f"{operation}: Got error response for slave_id={slave_id} "
-                f"(likely wrong slave_id skipped by pymodbus), retrying..."
-            )
+            error_msg = str(response) if response else "Unknown error"
+            error_msg_lower = error_msg.lower()
+            
+            # Explicitly check for CRC errors
+            if 'crc' in error_msg_lower or 'checksum' in error_msg_lower:
+                logger.warning(
+                    f"{operation}: CRC/Checksum error detected for slave_id={slave_id}: {error_msg}, retrying..."
+                )
+            else:
+                logger.warning(
+                    f"{operation}: Got error response for slave_id={slave_id}: {error_msg}, retrying..."
+                )
             return False
         
         # Additional check for slave_id if available
@@ -98,6 +120,7 @@ class ModbusGateway:
     def read_holding_registers(self, slave_id: int, address: int, count: int):
         self.ensure_connection()
         last_response = None
+        last_exception = None
         for attempt in range(self.max_retries):
             try:
                 response = self._client.read_holding_registers(
@@ -108,8 +131,16 @@ class ModbusGateway:
                     if attempt > 0:
                         logger.info(f"read_holding_registers succeeded after {attempt + 1} attempts for slave_id={slave_id}")
                     return response
-            except ModbusException as exc:
-                logger.warning(f"read_holding_registers exception for slave_id={slave_id}: {exc}. Retrying...")
+            except (ModbusException, ModbusIOException) as exc:
+                last_exception = exc
+                exc_type = type(exc).__name__
+                logger.warning(f"read_holding_registers {exc_type} for slave_id={slave_id}: {exc}. Retrying...")
+                self.close()
+                if attempt < self.max_retries - 1:
+                    self.ensure_connection()
+            except Exception as exc:
+                last_exception = exc
+                logger.error(f"read_holding_registers unexpected error for slave_id={slave_id}: {exc}. Retrying...")
                 self.close()
                 if attempt < self.max_retries - 1:
                     self.ensure_connection()
@@ -118,12 +149,13 @@ class ModbusGateway:
                 logger.info(f"read_holding_registers retry {attempt + 1}/{self.max_retries} for slave_id={slave_id}")
                 time.sleep(self.retry_delay)
         
-        logger.warning(f"read_holding_registers failed after {self.max_retries} attempts for slave_id={slave_id}")
+        logger.error(f"read_holding_registers failed after {self.max_retries} attempts for slave_id={slave_id}. Last exception: {last_exception}")
         return last_response
 
     def read_input_registers(self, slave_id: int, address: int, count: int):
         self.ensure_connection()
         last_response = None
+        last_exception = None
         for attempt in range(self.max_retries):
             try:
                 response = self._client.read_input_registers(
@@ -134,8 +166,16 @@ class ModbusGateway:
                     if attempt > 0:
                         logger.info(f"read_input_registers succeeded after {attempt + 1} attempts for slave_id={slave_id}")
                     return response
-            except ModbusException as exc:
-                logger.warning(f"read_input_registers exception for slave_id={slave_id}: {exc}. Retrying...")
+            except (ModbusException, ModbusIOException) as exc:
+                last_exception = exc
+                exc_type = type(exc).__name__
+                logger.warning(f"read_input_registers {exc_type} for slave_id={slave_id}: {exc}. Retrying...")
+                self.close()
+                if attempt < self.max_retries - 1:
+                    self.ensure_connection()
+            except Exception as exc:
+                last_exception = exc
+                logger.error(f"read_input_registers unexpected error for slave_id={slave_id}: {exc}. Retrying...")
                 self.close()
                 if attempt < self.max_retries - 1:
                     self.ensure_connection()
@@ -143,7 +183,7 @@ class ModbusGateway:
             if attempt < self.max_retries - 1:
                 logger.info(f"read_input_registers retry {attempt + 1}/{self.max_retries} for slave_id={slave_id}")
                 time.sleep(self.retry_delay)
-        logger.warning(f"read_input_registers failed after {self.max_retries} attempts for slave_id={slave_id}")
+        logger.error(f"read_input_registers failed after {self.max_retries} attempts for slave_id={slave_id}. Last exception: {last_exception}")
         return last_response
 
     def read_coils(self, slave_id: int, address: int, count: int):
