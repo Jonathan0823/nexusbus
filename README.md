@@ -111,11 +111,48 @@ uvicorn main:app --reload
 | `/api/admin/polling/{id}` | PUT    | Update target         | [→](./docs/POLLING_CONFIGURATION.md#update-polling-target)             |
 | `/api/admin/polling/{id}` | DELETE | Soft delete           | [→](./docs/POLLING_CONFIGURATION.md#delete-polling-target-soft-delete) |
 
+### Admin - Cache Management
+
+| Endpoint                     | Method | Description            | Docs |
+| ---------------------------- | ------ | ---------------------- | ---- |
+| `/api/admin/cache`           | GET    | Inspect all cache      | -    |
+| `/api/admin/cache/stats`     | GET    | Cache statistics       | -    |
+| `/api/admin/cache/device/{id}` | GET  | Inspect device cache   | -    |
+| `/api/admin/cache`           | DELETE | Clear all cache        | -    |
+
 **[Complete API Documentation →](./docs/DEVICE_MANAGEMENT.md)**
 
 ---
 
 ## 📦 Configuration
+
+### Environment Variables
+
+This application uses a `.env` file for configuration. Copy `.env.example` to `.env` to start.
+
+**Database Configuration**
+
+| Variable | Description | Default |
+| :--- | :--- | :--- |
+| `DATABASE_URL` | PostgreSQL connection string. | `postgresql+asyncpg://postgres:postgres@localhost:5432/modbus_db` |
+| `DATABASE_ECHO` | If `true`, logs SQL queries. | `false` |
+
+**MQTT Configuration (Optional)**
+
+| Variable | Description | Default |
+| :--- | :--- | :--- |
+| `MQTT_BROKER_HOST` | Broker hostname/IP. Set to enable MQTT. | `None` |
+| `MQTT_BROKER_PORT` | Broker port number. | `1883` |
+| `MQTT_USERNAME` | MQTT Username. | `None` |
+| `MQTT_PASSWORD` | MQTT Password. | `None` |
+| `MQTT_TOPIC_PREFIX` | Prefix for published topics. | `modbus/data` |
+
+**Application Settings**
+
+| Variable | Description | Default |
+| :--- | :--- | :--- |
+| `APP_NAME` | Application name. | `Modbus Middleware` |
+| `APP_VERSION` | Application version. | `0.1.0` |
 
 ### Device Parameters
 
@@ -131,14 +168,6 @@ uvicorn main:app --reload
 | `retry_delay` | float   | ❌       | Delay between retries (seconds) | 0.1     |
 
 **[Full Configuration Guide →](./docs/DEVICE_MANAGEMENT.md#device-parameters)**
-
-### Environment Variables
-
-```env
-# .env file
-DATABASE_URL=postgresql+asyncpg://user:password@localhost:5432/modbus_db
-DATABASE_ECHO=false
-```
 
 ---
 
