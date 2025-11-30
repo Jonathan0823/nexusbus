@@ -1,0 +1,46 @@
+services:
+  app:
+    build: .
+    container_name: nexusbus_app
+    ports:
+      - "8000:8000"
+    # Load environment variables from .env file
+    env_file:
+      - .env
+    # Override specific variables for Docker networking
+    environment:
+      # Connect to the 'db' service, not localhost
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/modbus_db
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - nexusbus_network
+    restart: unless-stopped
+
+  db:
+    image: postgres:15-alpine
+    container_name: nexusbus_db
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=modbus_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - nexusbus_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+
+networks:
+  nexusbus_network:
+    driver: bridge

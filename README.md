@@ -83,6 +83,30 @@ uvicorn main:app --reload
 - Interactive Docs: http://localhost:8000/docs
 - Health Check: http://localhost:8000/health
 
+### 4. Run with Docker (Recommended) 🐳
+
+For easier setup and deployment, you can use Docker Compose to run the application and its PostgreSQL database.
+
+```bash
+docker-compose up -d
+```
+
+This command will:
+- Build the `nexusbus_app` Docker image and start the container.
+- Create and start a PostgreSQL database container (`nexusbus_db`).
+- Automatically run database migrations.
+- Expose the application on port `8000`.
+
+**Access:**
+- API: `http://localhost:8000`
+- Interactive Docs: `http://localhost:8000/docs`
+- Health Check: `http://localhost:8000/health`
+
+To stop the services:
+```bash
+docker-compose down
+```
+
 ---
 
 ## 📖 API Quick Reference
