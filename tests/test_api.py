@@ -1,17 +1,9 @@
 import pytest
 from fastapi.testclient import TestClient
-from unittest.mock import MagicMock, patch
-from main import app
+from app.core.cache import RegisterCache
+from app.core.modbus_client import RegisterType
 
-# We need to mock the startup event to prevent real DB/MQTT connections during tests
-# unless we are running a full integration test suite.
-@pytest.fixture(autouse=True)
-def mock_startup_shutdown():
-    """Mock startup and shutdown events."""
-    with patch("main.create_db_and_tables", new_callable=MagicMock) as mock_db, \
-         patch("main.mqtt_manager.start", new_callable=MagicMock) as mock_mqtt, \
-         patch("main.load_device_configs", return_value=[]) as mock_load:
-        yield
+# Note: mock_startup_shutdown is now handled globally in conftest.py
 
 def test_health_check(client: TestClient):
     """Test the health check endpoint."""
@@ -25,10 +17,6 @@ def test_read_root_docs(client: TestClient):
     assert response.status_code == 200
 
 # --- Unit Tests for Utilities (No DB/Network needed) ---
-
-from app.core.cache import RegisterCache
-from app.core.modbus_client import RegisterType
-
 
 @pytest.mark.asyncio
 async def test_cache_operations():
