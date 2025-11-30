@@ -237,42 +237,52 @@ curl "http://localhost:8000/api/devices/office-eng/registers?address=0&count=10&
 
 ```
 modbus_middleware/
-├── README.md                          # This file
+├── .env.example                       # Environment variables template
 ├── DATABASE_SETUP.md                  # Setup guide & docs index
+├── main.py                            # Application entry point
 ├── migrate.py                         # Main migration runner
+├── requirements.txt                   # Python dependencies
 │
 ├── app/
+│   ├── __init__.py
+│   ├── dependencies.py               # Dependency injection
+│   ├── schemas.py                    # Pydantic schemas
 │   ├── api/
-│   │   ├── routes.py                 # Device API endpoints
+│   │   ├── __init__.py
 │   │   ├── admin_routes.py           # Admin device management
-│   │   └── polling_routes.py         # Admin polling management
+│   │   ├── cache_routes.py           # Admin cache inspection
+│   │   ├── polling_routes.py         # Admin polling management
+│   │   └── routes.py                 # Device API endpoints
 │   ├── config/
+│   │   ├── __init__.py
 │   │   └── devices.py                # Device configuration loader
 │   ├── core/
+│   │   ├── __init__.py
+│   │   ├── cache.py                  # Register caching
 │   │   ├── config.py                 # Application settings
 │   │   ├── modbus_client.py          # Modbus client manager
-│   │   └── cache.py                  # Register caching
+│   │   └── mqtt_client.py            # MQTT client manager
 │   ├── database/
-│   │   ├── models.py                 # SQLModel database models
+│   │   ├── __init__.py
 │   │   ├── connection.py             # Database connection
-│   │   └── crud.py                   # CRUD operations
+│   │   ├── crud.py                   # CRUD operations
+│   │   └── models.py                 # SQLModel database models
 │   └── services/
+│       ├── __init__.py
 │       └── poller.py                 # Background polling service
 │
-├── migrations/                        # Database migrations
-│   ├── README.md                     # Migration guide
-│   ├── base.py                       # Migration utilities
-│   ├── 001_initial_setup.py         # Create devices table
-│   └── 002_add_polling_targets.py   # Create polling table
-│
 ├── docs/                              # Documentation
-│   ├── DEVICE_MANAGEMENT.md          # Device API guide (15.7 KB)
-│   ├── POLLING_CONFIGURATION.md      # Polling guide (8.0 KB)
-│   └── POLLING_QUICK_START.md        # Quick polling guide (3.8 KB)
+│   ├── CACHE_INSPECTION_GUIDE.md     # Cache debugging guide
+│   ├── DEVICE_MANAGEMENT.md          # Device API guide
+│   ├── MQTT_INTEGRATION.md           # MQTT integration guide
+│   ├── POLLING_CONFIGURATION.md      # Polling guide
+│   └── POLLING_QUICK_START.md        # Quick polling guide
 │
-├── main.py                            # Application entry point
-├── requirements.txt                   # Python dependencies
-└── .env.example                       # Environment variables template
+└── migrations/                        # Database migrations
+    ├── README.md                     # Migration guide
+    ├── base.py                       # Migration utilities
+    ├── 001_initial_setup.py          # Migration: Create devices table
+    └── 002_add_polling_targets.py    # Migration: Create polling table
 ```
 
 ---
