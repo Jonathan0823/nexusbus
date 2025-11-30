@@ -2,20 +2,20 @@
 
 ## 📚 How to Check Cached Data
 
-Ada beberapa cara untuk cek data yang ada di cache:
+There are several ways to check the data currently stored in the cache:
 
 ---
 
 ## 1. **Method 1: Read with `source=cache`** (Existing)
 
-Cara paling simple - pakai endpoint existing dengan parameter `source=cache`:
+The simplest way is to use the existing endpoint with the `source=cache` parameter:
 
 ```bash
-# Get cached data untuk office-eng
+# Get cached data for office-eng
 curl "http://localhost:8000/api/devices/office-eng/registers?address=0&count=10&source=cache"
 ```
 
-**Response (kalau ada di cache)**:
+**Response (if found in cache)**:
 ```json
 {
   "device_id": "office-eng",
@@ -23,12 +23,12 @@ curl "http://localhost:8000/api/devices/office-eng/registers?address=0&count=10&
   "address": 0,
   "count": 10,
   "values": [100, 200, 300, 400, 500, 600, 700, 800, 900, 1000],
-  "source": "cache",               // ← Dari cache!
-  "cached_at": "2025-11-30T09:05:30.123456+00:00"  // ← Timestamp polling
+  "source": "cache",               // ← From cache!
+  "cached_at": "2025-11-30T09:05:30.123456+00:00"  // ← Polling timestamp
 }
 ```
 
-**Response (kalau tidak ada di cache)**:
+**Response (if NOT found in cache)**:
 ```json
 {
   "device_id": "office-eng",
@@ -36,17 +36,17 @@ curl "http://localhost:8000/api/devices/office-eng/registers?address=0&count=10&
   "address": 0,
   "count": 10,
   "values": [100, 200, 300, 400, 500, 600, 700, 800, 900, 1000],
-  "source": "live"  // ← Fallback ke live read (langsung dari device)
+  "source": "live"  // ← Fallback to live read (directly from device)
 }
 ```
 
-**Tips**: Lihat field `source` dan `cached_at` untuk tau apakah dari cache atau live!
+**Tip**: Look at the `source` and `cached_at` fields to know if the data is from cache or live!
 
 ---
 
 ## 2. **Method 2: Inspect All Cache** (New! ✨)
 
-Endpoint baru untuk lihat **semua** data yang ada di cache:
+New endpoint to view **all** data currently in the cache:
 
 ```bash
 curl http://localhost:8000/api/admin/cache
@@ -63,7 +63,7 @@ curl http://localhost:8000/api/admin/cache
     "count": 10,
     "values": [100, 200, 300, 400, 500, 600, 700, 800, 900, 1000],
     "cached_at": "2025-11-30T09:05:30.123456+00:00",
-    "age_seconds": 12.5  // ← Umur cache (detik)
+    "age_seconds": 12.5  // ← Cache age (seconds)
   },
   {
     "key": "office-eng:holding:100:5",
@@ -82,7 +82,7 @@ curl http://localhost:8000/api/admin/cache
 
 ## 3. **Method 3: Cache Stats** (New! ✨)
 
-Get statistik cache:
+Get cache statistics:
 
 ```bash
 curl http://localhost:8000/api/admin/cache/stats
@@ -102,16 +102,16 @@ curl http://localhost:8000/api/admin/cache/stats
 }
 ```
 
-**Useful untuk**:
-- Cek berapa entry di cache
-- Cek device mana aja yang ada di cache
-- Cek kapan terakhir di-update
+**Useful for**:
+- Checking how many entries are in the cache
+- Checking which devices are in the cache
+- Checking when the cache was last updated
 
 ---
 
 ## 4. **Method 4: Inspect Device Cache** (New! ✨)
 
-Lihat semua cache untuk device tertentu:
+View all cache entries for a specific device:
 
 ```bash
 curl http://localhost:8000/api/admin/cache/device/office-eng
@@ -143,7 +143,7 @@ curl http://localhost:8000/api/admin/cache/device/office-eng
 
 ## 5. **Method 5: Clear Cache** (New! ✨)
 
-Hapus semua cache (useful untuk testing):
+Clear all cache (useful for testing):
 
 ```bash
 curl -X DELETE http://localhost:8000/api/admin/cache
@@ -157,7 +157,7 @@ curl -X DELETE http://localhost:8000/api/admin/cache
 }
 ```
 
-**Warning**: Setelah clear, polling cycle berikutnya akan populate cache lagi.
+**Warning**: After clearing, the next polling cycle will populate the cache again.
 
 ---
 
@@ -176,12 +176,12 @@ curl -X DELETE http://localhost:8000/api/admin/cache
 
 ## 🧪 Testing Cache Updates
 
-### Step 1: Start app dengan polling
+### Step 1: Start app with polling
 ```bash
 uvicorn main:app --reload
 ```
 
-### Step 2: Wait 5-10 seconds untuk polling populate cache
+### Step 2: Wait 5-10 seconds for polling to populate cache
 
 ### Step 3: Check cache
 ```bash
@@ -191,7 +191,7 @@ curl http://localhost:8000/api/admin/cache/stats
 Expected:
 ```json
 {
-  "total_entries": 2,  // ← Ada data!
+  "total_entries": 2,  // ← Data exists!
   "devices": ["office-eng", "formation"],
   ...
 }
@@ -246,17 +246,17 @@ curl -X DELETE http://localhost:8000/api/admin/cache
 
 ## 💡 Tips
 
-1. **Check `source` field** untuk tau apakah dari cache atau live
-2. **Check `cached_at` timestamp** untuk tau kapan terakhir di-update
-3. **Check `age_seconds`** untuk tau berapa lama data di cache
-4. **Use `/stats` endpoint** untuk quick overview
-5. **Use `source=cache`** di production untuk fast response
+1. **Check `source` field** to know if data is from cache or live
+2. **Check `cached_at` timestamp** to know when it was last updated
+3. **Check `age_seconds`** to know how old the cache data is
+4. **Use `/stats` endpoint** for a quick overview
+5. **Use `source=cache`** in production for fast response
 
 ---
 
 ## 🐛 Troubleshooting
 
-### Cache kosong / tidak ada data
+### Cache empty / no data
 
 **Check:**
 ```bash
@@ -264,44 +264,44 @@ curl http://localhost:8000/api/admin/cache/stats
 ```
 
 If `total_entries: 0`:
-1. ✅ Apakah polling targets sudah dikonfigurasi?
+1. ✅ Are polling targets configured?
    ```bash
    curl http://localhost:8000/api/admin/polling/active
    ```
-2. ✅ Apakah polling service running?
-   - Check logs untuk "Polling X target(s)..."
-3. ✅ Apakah polling berhasil?
-   - Check logs untuk "✓ Polled ..." atau "✗ Poll failed"
+2. ✅ Is the polling service running?
+   - Check logs for "Polling X target(s)..."
+3. ✅ Is polling successful?
+   - Check logs for "✓ Polled ..." or "✗ Poll failed"
 
-### Cache tidak update
+### Cache not updating
 
 **Check timestamps:**
 ```bash
 curl http://localhost:8000/api/admin/cache | jq '.[].cached_at'
 ```
 
-If timestamps stuck (tidak berubah tiap 5 detik):
-1. ✅ Check logs untuk polling errors
+If timestamps stuck (not changing every 5 seconds):
+1. ✅ Check logs for polling errors
 2. ✅ Check device connectivity
 3. ✅ Check `max_retries` setting (should be 1 for shared gateway)
 
 ### `source: live` instead of `cache`
 
 **Possible reasons:**
-1. Cache key tidak match:
+1. Cache key mismatch:
    - Request: `address=0, count=10`
-   - Cached: `address=0, count=5` ← Beda count!
-2. Polling target tidak ada untuk kombinasi device+register+address+count tersebut
+   - Cached: `address=0, count=5` ← Different count!
+2. No polling target for that combination of device+register+address+count
 3. Cache expired / cleared
 
 **Solution:**
-Check apa yang ada di cache:
+Check what is in the cache:
 ```bash
 curl http://localhost:8000/api/admin/cache/device/office-eng
 ```
 
-Match address & count dengan request Anda.
+Match address & count with your request.
 
 ---
 
-**Sekarang kamu bisa monitor cache dengan mudah!** 🎉
+**Now you can monitor the cache easily!** 🎉
