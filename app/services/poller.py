@@ -9,6 +9,7 @@ from typing import List
 
 from app.core.cache import RegisterCache
 from app.core.modbus_client import ModbusClientManager, ModbusClientError, RegisterType
+from app.core.mqtt_client import MQTTClientManager
 from app.database import crud
 from app.database.connection import async_session_maker
 
@@ -44,7 +45,7 @@ async def poll_registers(
     interval_seconds: int,
     use_database: bool = True,
     fallback_targets: List[dict] | None = None,
-    mqtt_manager: Any = None,  # Optional MQTT manager
+    mqtt_manager: MQTTClientManager = None,  # Optional MQTT manager
 ) -> None:
     """Continuously poll configured registers and store them in cache.
 
@@ -104,7 +105,7 @@ async def poll_registers(
                         address=address,
                         count=count,
                         retries=0,  # Fail fast!
-                        timeout=1.0, # Fast timeout for poller!
+                        timeout=1.0,  # Fast timeout for poller!
                     )
 
                     # Store in cache
@@ -114,7 +115,7 @@ async def poll_registers(
                         f"✓ Polled {device_id} {register_type.value} "
                         f"addr={address} count={count}"
                     )
-                    
+
                     # Publish to MQTT (Fire & Forget)
                     if mqtt_manager:
                         # Topic: {prefix}/{device_id}/{register_type}/{address}
@@ -125,7 +126,7 @@ async def poll_registers(
                             "address": address,
                             "count": count,
                             "values": data,
-                            "timestamp": asyncio.get_event_loop().time(), # Simple timestamp
+                            "timestamp": asyncio.get_event_loop().time(),  # Simple timestamp
                         }
                         # Run in background to not block polling loop
                         asyncio.create_task(mqtt_manager.publish(topic_suffix, payload))
