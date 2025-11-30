@@ -6,7 +6,6 @@ import asyncio
 import logging
 from typing import List
 
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.cache import RegisterCache
 from app.core.modbus_client import ModbusClientManager, ModbusClientError, RegisterType
@@ -21,7 +20,7 @@ async def load_polling_targets_from_db() -> List[dict]:
     try:
         async with async_session_maker() as session:
             targets = await crud.get_all_active_polling_targets(session)
-            
+
             # Convert to dict format expected by polling loop
             return [
                 {
@@ -47,7 +46,7 @@ async def poll_registers(
     fallback_targets: List[dict] | None = None,
 ) -> None:
     """Continuously poll configured registers and store them in cache.
-    
+
     Args:
         manager: Modbus client manager
         cache: Register cache
@@ -58,7 +57,7 @@ async def poll_registers(
 
     if interval_seconds <= 0:
         interval_seconds = 1
-    
+
     if fallback_targets is None:
         fallback_targets = []
 
@@ -76,54 +75,63 @@ async def poll_registers(
                     targets = fallback_targets
             else:
                 targets = fallback_targets
-            
+
             if not targets:
                 logger.debug("No polling targets configured, waiting...")
                 await asyncio.sleep(interval_seconds)
                 continue
-            
+
             logger.debug(f"Polling {len(targets)} target(s)...")
-            
+
             for target in targets:
                 try:
                     device_id = target["device_id"]
                     register_type = target["register_type"]
                     address = int(target["address"])
                     count = int(target["count"])
-                    
+
                     # Convert string to RegisterType enum
                     if not isinstance(register_type, RegisterType):
                         register_type = RegisterType(register_type)
-                    
-                    # Read from Modbus device
+
+                    # Read from Modbus device (fail fast, no retry here)
+                    # Force retries=0 to override device config and ensure fail-fast in polling loop
                     data = await manager.read_registers(
                         device_id=device_id,
                         register_type=register_type,
                         address=address,
                         count=count,
+                        retries=0,  # Fail fast!
                     )
-                    
+
                     # Store in cache
                     await cache.set(device_id, register_type, address, count, data)
-                    
-                    logger.debug(
-                        f"Polled {device_id} {register_type.value} "
-                        f"addr={address} count={count} → {data}"
+
+                    logger.info(
+                        f"✓ Polled {device_id} {register_type.value} "
+                        f"addr={address} count={count}"
                     )
-                    
+
                 except (KeyError, ValueError) as exc:
-                    logger.error(f"Invalid poll target {target}: {exc}")
-                except (ModbusClientError, ConnectionError) as exc:
+                    # Invalid configuration - log once and skip
+                    logger.error(f"Invalid poll target config {target}: {exc}")
+
+                except (ModbusClientError, ConnectionError):
+                    # Modbus error - log briefly and skip, will retry next cycle
                     logger.warning(
-                        f"Polling failed for {target.get('device_id')} "
-                        f"(register={target.get('register_type')} "
-                        f"addr={target.get('address')} "
-                        f"count={target.get('count')}): {exc}"
+                        f"✗ Poll failed: {target.get('device_id')} "
+                        f"{target.get('register_type')} addr={target.get('address')} - "
+                        f"will retry next cycle"
                     )
-            
+
+                except Exception as exc:
+                    # Unexpected error - log and skip
+                    logger.error(
+                        f"Unexpected error polling {target.get('device_id')}: {exc}"
+                    )
+
             await asyncio.sleep(interval_seconds)
-            
+
     except asyncio.CancelledError:
         logger.info("Polling task cancelled")
         raise
-
