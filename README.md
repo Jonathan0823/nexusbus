@@ -2,7 +2,7 @@
 
 > **NexusBus: A robust FastAPI-based middleware for Modbus TCP/RTU, offering a database-driven gateway for seamless data integration. It provides dynamic device management via REST API, automated polling with in-memory caching, real-time MQTT publishing, and hot-reload capabilities for configurations.**
 
-[![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/Python-3.10.11+-blue.svg)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.104+-green.svg)](https://fastapi.tiangolo.com/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15+-blue.svg)](https://www.postgresql.org/)
 [![SQLModel](https://img.shields.io/badge/SQLModel-0.0.27-green.svg)](https://sqlmodel.tiangolo.com/)
@@ -92,17 +92,20 @@ docker-compose up -d
 ```
 
 This command will:
+
 - Build the `nexusbus_app` Docker image and start the container.
 - Create and start a PostgreSQL database container (`nexusbus_db`).
 - Automatically run database migrations.
 - Expose the application on port `8000`.
 
 **Access:**
+
 - API: `http://localhost:8000`
 - Interactive Docs: `http://localhost:8000/docs`
 - Health Check: `http://localhost:8000/health`
 
 To stop the services:
+
 ```bash
 docker-compose down
 ```
