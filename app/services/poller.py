@@ -95,13 +95,14 @@ async def poll_registers(
                         register_type = RegisterType(register_type)
 
                     # Read from Modbus device (fail fast, no retry here)
-                    # Force retries=0 to override device config and ensure fail-fast in polling loop
+                    # Force retries=0 and timeout=1.0s to ensure fail-fast in polling loop
                     data = await manager.read_registers(
                         device_id=device_id,
                         register_type=register_type,
                         address=address,
                         count=count,
                         retries=0,  # Fail fast!
+                        timeout=1.0, # Fast timeout for poller!
                     )
 
                     # Store in cache
