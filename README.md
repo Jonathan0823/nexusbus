@@ -153,6 +153,7 @@ This application uses a `.env` file for configuration. Copy `.env.example` to `.
 | :--- | :--- | :--- |
 | `APP_NAME` | Application name. | `Modbus Middleware` |
 | `APP_VERSION` | Application version. | `0.1.0` |
+| `POLL_INTERVAL_SECONDS` | Polling interval for background service. | `5` |
 
 ### Device Parameters
 
