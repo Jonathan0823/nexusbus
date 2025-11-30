@@ -10,9 +10,9 @@
 
 ## 📚 Documentation Navigation
 
-| **Quick Start**                       | **Device Management**                                                  | **Polling**                                       | **Migrations**                            |
-| ------------------------------------- | ---------------------------------------------------------------------- | ------------------------------------------------- | ----------------------------------------- |
-| [Database Setup](./DATABASE_SETUP.md) | [Device API Guide](./docs/DEVICE_MANAGEMENT.md)                        | [Polling Config](./docs/POLLING_CONFIGURATION.md) | [Migration Guide](./migrations/README.md) |
+| **Quick Start**                       | **Device Management**                                                  | **Polling**                                       | **MQTT**                                       | **Migrations**                            |
+| ------------------------------------- | ---------------------------------------------------------------------- | ------------------------------------------------- | ---------------------------------------------- | ----------------------------------------- |
+| [Database Setup](./DATABASE_SETUP.md) | [Device API Guide](./docs/DEVICE_MANAGEMENT.md)                        | [Polling Config](./docs/POLLING_CONFIGURATION.md) | [MQTT Guide](./docs/MQTT_INTEGRATION.md)       | [Migration Guide](./migrations/README.md) |
 - ✅ **Database-Driven Configuration** - Store and manage Modbus devices in PostgreSQL
 - ✅ **Dynamic Device Management** - Add/update/remove devices via REST API without restart
 - ✅ **Automatic Polling** - Configure registers to poll automatically from database
@@ -432,6 +432,7 @@ curl -X POST http://localhost:8000/api/admin/devices/reload
 - **[📖 Complete Documentation Index](./DATABASE_SETUP.md)**
 - **[🔧 Device API Reference](./docs/DEVICE_MANAGEMENT.md)**
 - **[📊 Polling Configuration](./docs/POLLING_CONFIGURATION.md)**
+- **[📡 MQTT Integration](./docs/MQTT_INTEGRATION.md)**
 - **[🗃️ Database Migrations](./migrations/README.md)**
 - **[💻 Interactive API Docs](http://localhost:8000/docs)** (when running)
 
