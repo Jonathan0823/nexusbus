@@ -5,6 +5,9 @@
 [![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.104+-green.svg)](https://fastapi.tiangolo.com/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15+-blue.svg)](https://www.postgresql.org/)
+[![SQLModel](https://img.shields.io/badge/SQLModel-0.0.27-green.svg)](https://sqlmodel.tiangolo.com/)
+[![Pymodbus](https://img.shields.io/badge/Pymodbus-3.9.2-orange.svg)](https://github.com/pymodbus-dev/pymodbus)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
 ---
 
