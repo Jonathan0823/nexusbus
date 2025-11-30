@@ -1,6 +1,6 @@
 # Stage 1: Builder
 # Used to compile dependencies and prepare the virtual environment
-FROM python:3.11-slim as builder
+FROM python:3.10.11-slim as builder
 
 WORKDIR /app
 
@@ -27,7 +27,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Stage 2: Final Runtime
 # A clean, small image containing only what's needed to run the app
-FROM python:3.11-slim
+FROM python:3.10.11-slim as builder
 
 WORKDIR /app
 
