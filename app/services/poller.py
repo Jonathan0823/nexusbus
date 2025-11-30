@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from typing import List
 
 
@@ -126,7 +127,7 @@ async def poll_registers(
                             "address": address,
                             "count": count,
                             "values": data,
-                            "timestamp": asyncio.get_event_loop().time(),  # Simple timestamp
+                            "timestamp": time.time(),  # Standard Unix timestamp
                         }
                         # Run in background to not block polling loop
                         asyncio.create_task(mqtt_manager.publish(topic_suffix, payload))
