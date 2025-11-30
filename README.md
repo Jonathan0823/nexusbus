@@ -2,7 +2,7 @@
 
 > **NexusBus: A robust FastAPI-based middleware for Modbus TCP/RTU, offering a database-driven gateway for seamless data integration. It provides dynamic device management via REST API, automated polling with in-memory caching, real-time MQTT publishing, and hot-reload capabilities for configurations.**
 
-[![Python](https://img.shields.io/badge/Python-3.10.11+-blue.svg)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/Python-3.10.11-blue.svg)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.104+-green.svg)](https://fastapi.tiangolo.com/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15+-blue.svg)](https://www.postgresql.org/)
 [![SQLModel](https://img.shields.io/badge/SQLModel-0.0.27-green.svg)](https://sqlmodel.tiangolo.com/)
