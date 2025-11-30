@@ -31,7 +31,17 @@ docker-compose.yml
 .pytest_cache
 .coverage
 htmlcov/
+tests/
+test_*.py
+pytest.ini
 
 # Documentation and others
 GEMINI.md
 DATABASE_SETUP.md
+README.md
+LICENSE
+docs/
+
+# Debug and migration scripts not needed at runtime
+debug_modbus.py
+migrate.py
