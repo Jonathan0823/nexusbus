@@ -111,140 +111,203 @@ class ModbusGateway:
             return False
         return True
 
-    def read_holding_registers(self, slave_id: int, address: int, count: int, retries: Optional[int] = None):
+    def _apply_temp_timeout(self, timeout: Optional[float]):
+        """Apply temporary timeout to client and socket."""
+        if timeout is None:
+            return None
+            
+        # Save original timeout
+        # Pymodbus structure might vary, try to get from common places
+        original_timeout = getattr(self._client, "timeout", self.timeout)
+        
+        # Set new timeout on client object
+        if hasattr(self._client, "timeout"):
+            self._client.timeout = timeout
+        if hasattr(self._client, "comm_params") and hasattr(self._client.comm_params, "timeout"):
+            self._client.comm_params.timeout = timeout
+            
+        # Set new timeout on actual socket if connected
+        if self._client.socket:
+            self._client.socket.settimeout(timeout)
+            
+        return original_timeout
+
+    def _restore_timeout(self, original_timeout: Optional[float]):
+        """Restore original timeout."""
+        if original_timeout is None:
+            return
+            
+        # Restore on client object
+        if hasattr(self._client, "timeout"):
+            self._client.timeout = original_timeout
+        if hasattr(self._client, "comm_params") and hasattr(self._client.comm_params, "timeout"):
+            self._client.comm_params.timeout = original_timeout
+            
+        # Restore on socket
+        if self._client.socket:
+            self._client.socket.settimeout(original_timeout)
+
+    def read_holding_registers(self, slave_id: int, address: int, count: int, retries: Optional[int] = None, timeout: Optional[float] = None):
         self.ensure_connection()
         last_response = None
         last_exception = None
         
-        # Use provided retries or default to self.max_retries
-        # Ensure at least 1 attempt (range(1) runs once)
-        num_attempts = (retries if retries is not None else self.max_retries)
-        if num_attempts < 1:
-            num_attempts = 1
-            
-        for attempt in range(num_attempts):
-            try:
-                response = self._client.read_holding_registers(
-                    address=address, count=count, slave=slave_id
-                )
-                last_response = response
-                if self._is_valid_response(response, "read_holding_registers", slave_id):
-                    if attempt > 0:
-                        logger.info(f"read_holding_registers succeeded after {attempt + 1} attempts for slave_id={slave_id}")
-                    return response
-            except (ModbusException, ModbusIOException) as exc:
-                last_exception = exc
-                exc_type = type(exc).__name__
-                logger.warning(f"read_holding_registers {exc_type} for slave_id={slave_id}: {exc}. Retrying...")
-                self.close()
-                if attempt < num_attempts - 1:
-                    self.ensure_connection()
-            except Exception as exc:
-                last_exception = exc
-                logger.error(f"read_holding_registers unexpected error for slave_id={slave_id}: {exc}. Retrying...")
-                self.close()
-                if attempt < num_attempts - 1:
-                    self.ensure_connection()
-            
-            if attempt < num_attempts - 1:
-                logger.info(f"read_holding_registers retry {attempt + 1}/{num_attempts} for slave_id={slave_id}")
-                time.sleep(self.retry_delay)
+        # Apply temporary timeout override
+        orig_timeout = self._apply_temp_timeout(timeout)
         
-        logger.error(f"read_holding_registers failed after {num_attempts} attempts for slave_id={slave_id}. Last exception: {last_exception}")
-        return last_response
+        try:
+            num_attempts = (retries if retries is not None else self.max_retries)
+            if num_attempts < 1:
+                num_attempts = 1
+                
+            for attempt in range(num_attempts):
+                try:
+                    response = self._client.read_holding_registers(
+                        address=address, count=count, slave=slave_id
+                    )
+                    last_response = response
+                    if self._is_valid_response(response, "read_holding_registers", slave_id):
+                        if attempt > 0:
+                            logger.info(f"read_holding_registers succeeded after {attempt + 1} attempts for slave_id={slave_id}")
+                        return response
+                except (ModbusException, ModbusIOException) as exc:
+                    last_exception = exc
+                    exc_type = type(exc).__name__
+                    logger.warning(f"read_holding_registers {exc_type} for slave_id={slave_id}: {exc}. Retrying...")
+                    self.close()
+                    if attempt < num_attempts - 1:
+                        self.ensure_connection()
+                        # Re-apply timeout after reconnect
+                        self._apply_temp_timeout(timeout)
+                except Exception as exc:
+                    last_exception = exc
+                    logger.error(f"read_holding_registers unexpected error for slave_id={slave_id}: {exc}. Retrying...")
+                    self.close()
+                    if attempt < num_attempts - 1:
+                        self.ensure_connection()
+                        # Re-apply timeout after reconnect
+                        self._apply_temp_timeout(timeout)
+                
+                if attempt < num_attempts - 1:
+                    logger.info(f"read_holding_registers retry {attempt + 1}/{num_attempts} for slave_id={slave_id}")
+                    time.sleep(self.retry_delay)
+            
+            logger.error(f"read_holding_registers failed after {num_attempts} attempts for slave_id={slave_id}. Last exception: {last_exception}")
+            return last_response
+        finally:
+            self._restore_timeout(orig_timeout)
 
-    def read_input_registers(self, slave_id: int, address: int, count: int, retries: Optional[int] = None):
+    def read_input_registers(self, slave_id: int, address: int, count: int, retries: Optional[int] = None, timeout: Optional[float] = None):
         self.ensure_connection()
         last_response = None
         last_exception = None
         
-        num_attempts = (retries if retries is not None else self.max_retries)
-        if num_attempts < 1:
-            num_attempts = 1
-            
-        for attempt in range(num_attempts):
-            try:
-                response = self._client.read_input_registers(
-                    address=address, count=count, slave=slave_id
-                )
-                last_response = response
-                if self._is_valid_response(response, "read_input_registers", slave_id):
-                    if attempt > 0:
-                        logger.info(f"read_input_registers succeeded after {attempt + 1} attempts for slave_id={slave_id}")
-                    return response
-            except (ModbusException, ModbusIOException) as exc:
-                last_exception = exc
-                exc_type = type(exc).__name__
-                logger.warning(f"read_input_registers {exc_type} for slave_id={slave_id}: {exc}. Retrying...")
-                self.close()
-                if attempt < num_attempts - 1:
-                    self.ensure_connection()
-            except Exception as exc:
-                last_exception = exc
-                logger.error(f"read_input_registers unexpected error for slave_id={slave_id}: {exc}. Retrying...")
-                self.close()
-                if attempt < num_attempts - 1:
-                    self.ensure_connection()
+        orig_timeout = self._apply_temp_timeout(timeout)
+        
+        try:
+            num_attempts = (retries if retries is not None else self.max_retries)
+            if num_attempts < 1:
+                num_attempts = 1
+                
+            for attempt in range(num_attempts):
+                try:
+                    response = self._client.read_input_registers(
+                        address=address, count=count, slave=slave_id
+                    )
+                    last_response = response
+                    if self._is_valid_response(response, "read_input_registers", slave_id):
+                        if attempt > 0:
+                            logger.info(f"read_input_registers succeeded after {attempt + 1} attempts for slave_id={slave_id}")
+                        return response
+                except (ModbusException, ModbusIOException) as exc:
+                    last_exception = exc
+                    exc_type = type(exc).__name__
+                    logger.warning(f"read_input_registers {exc_type} for slave_id={slave_id}: {exc}. Retrying...")
+                    self.close()
+                    if attempt < num_attempts - 1:
+                        self.ensure_connection()
+                        self._apply_temp_timeout(timeout)
+                except Exception as exc:
+                    last_exception = exc
+                    logger.error(f"read_input_registers unexpected error for slave_id={slave_id}: {exc}. Retrying...")
+                    self.close()
+                    if attempt < num_attempts - 1:
+                        self.ensure_connection()
+                        self._apply_temp_timeout(timeout)
 
-            if attempt < num_attempts - 1:
-                logger.info(f"read_input_registers retry {attempt + 1}/{num_attempts} for slave_id={slave_id}")
-                time.sleep(self.retry_delay)
-        logger.error(f"read_input_registers failed after {num_attempts} attempts for slave_id={slave_id}. Last exception: {last_exception}")
-        return last_response
+                if attempt < num_attempts - 1:
+                    logger.info(f"read_input_registers retry {attempt + 1}/{num_attempts} for slave_id={slave_id}")
+                    time.sleep(self.retry_delay)
+            logger.error(f"read_input_registers failed after {num_attempts} attempts for slave_id={slave_id}. Last exception: {last_exception}")
+            return last_response
+        finally:
+            self._restore_timeout(orig_timeout)
 
-    def read_coils(self, slave_id: int, address: int, count: int, retries: Optional[int] = None):
+    def read_coils(self, slave_id: int, address: int, count: int, retries: Optional[int] = None, timeout: Optional[float] = None):
         self.ensure_connection()
         last_response = None
         
-        num_attempts = (retries if retries is not None else self.max_retries)
-        if num_attempts < 1:
-            num_attempts = 1
-            
-        for attempt in range(num_attempts):
-            try:
-                response = self._client.read_coils(
-                    address=address, count=count, slave=slave_id
-                )
-                last_response = response
-                if self._is_valid_response(response, "read_coils", slave_id):
-                    return response
-            except ModbusException as exc:
-                logger.warning(f"read_coils exception for slave_id={slave_id}: {exc}. Retrying...")
-                self.close()
+        orig_timeout = self._apply_temp_timeout(timeout)
+        
+        try:
+            num_attempts = (retries if retries is not None else self.max_retries)
+            if num_attempts < 1:
+                num_attempts = 1
+                
+            for attempt in range(num_attempts):
+                try:
+                    response = self._client.read_coils(
+                        address=address, count=count, slave=slave_id
+                    )
+                    last_response = response
+                    if self._is_valid_response(response, "read_coils", slave_id):
+                        return response
+                except ModbusException as exc:
+                    logger.warning(f"read_coils exception for slave_id={slave_id}: {exc}. Retrying...")
+                    self.close()
+                    if attempt < num_attempts - 1:
+                        self.ensure_connection()
+                        self._apply_temp_timeout(timeout)
+
                 if attempt < num_attempts - 1:
-                    self.ensure_connection()
+                    logger.debug(f"Retry {attempt + 1}/{num_attempts} for slave_id={slave_id}")
+                    time.sleep(self.retry_delay)
+            return last_response
+        finally:
+            self._restore_timeout(orig_timeout)
 
-            if attempt < num_attempts - 1:
-                logger.debug(f"Retry {attempt + 1}/{num_attempts} for slave_id={slave_id}")
-                time.sleep(self.retry_delay)
-        return last_response
-
-    def read_discrete_inputs(self, slave_id: int, address: int, count: int, retries: Optional[int] = None):
+    def read_discrete_inputs(self, slave_id: int, address: int, count: int, retries: Optional[int] = None, timeout: Optional[float] = None):
         self.ensure_connection()
         last_response = None
         
-        num_attempts = (retries if retries is not None else self.max_retries)
-        if num_attempts < 1:
-            num_attempts = 1
-            
-        for attempt in range(num_attempts):
-            try:
-                response = self._client.read_discrete_inputs(
-                    address=address, count=count, slave=slave_id
-                )
-                last_response = response
-                if self._is_valid_response(response, "read_discrete_inputs", slave_id):
-                    return response
-            except ModbusException as exc:
-                logger.warning(f"read_discrete_inputs exception for slave_id={slave_id}: {exc}. Retrying...")
-                self.close()
-                if attempt < num_attempts - 1:
-                    self.ensure_connection()
+        orig_timeout = self._apply_temp_timeout(timeout)
+        
+        try:
+            num_attempts = (retries if retries is not None else self.max_retries)
+            if num_attempts < 1:
+                num_attempts = 1
+                
+            for attempt in range(num_attempts):
+                try:
+                    response = self._client.read_discrete_inputs(
+                        address=address, count=count, slave=slave_id
+                    )
+                    last_response = response
+                    if self._is_valid_response(response, "read_discrete_inputs", slave_id):
+                        return response
+                except ModbusException as exc:
+                    logger.warning(f"read_discrete_inputs exception for slave_id={slave_id}: {exc}. Retrying...")
+                    self.close()
+                    if attempt < num_attempts - 1:
+                        self.ensure_connection()
+                        self._apply_temp_timeout(timeout)
 
-            if attempt < num_attempts - 1:
-                logger.debug(f"Retry {attempt + 1}/{num_attempts} for slave_id={slave_id}")
-                time.sleep(self.retry_delay)
-        return last_response
+                if attempt < num_attempts - 1:
+                    logger.debug(f"Retry {attempt + 1}/{num_attempts} for slave_id={slave_id}")
+                    time.sleep(self.retry_delay)
+            return last_response
+        finally:
+            self._restore_timeout(orig_timeout)
 
     def write_holding_register(self, slave_id: int, address: int, value: int):
         self.ensure_connection()
@@ -350,9 +413,9 @@ class ModbusClientManager:
                 return await asyncio.to_thread(method, slave_id, *args, **kwargs)
 
     async def read_registers(
-        self, device_id: str, register_type: RegisterType, address: int, count: int, retries: Optional[int] = None
+        self, device_id: str, register_type: RegisterType, address: int, count: int, retries: Optional[int] = None, timeout: Optional[float] = None
     ) -> List[int]:
-        response = await self._run_read(device_id, register_type, address, count, retries=retries)
+        response = await self._run_read(device_id, register_type, address, count, retries=retries, timeout=timeout)
         
         if response is None:
             raise ModbusClientError(f"No response from device '{device_id}'")
@@ -384,7 +447,7 @@ class ModbusClientManager:
             raise ModbusClientError(str(response))
 
     async def _run_read(
-        self, device_id: str, register_type: RegisterType, address: int, count: int, retries: Optional[int] = None
+        self, device_id: str, register_type: RegisterType, address: int, count: int, retries: Optional[int] = None, timeout: Optional[float] = None
     ):
         method_name = {
             RegisterType.HOLDING: "read_holding_registers",
@@ -392,7 +455,7 @@ class ModbusClientManager:
             RegisterType.COIL: "read_coils",
             RegisterType.DISCRETE: "read_discrete_inputs",
         }[register_type]
-        return await self._run_with_gateway(device_id, method_name, address, count, retries=retries)
+        return await self._run_with_gateway(device_id, method_name, address, count, retries=retries, timeout=timeout)
 
     async def reset_gateway(self, device_id: str) -> None:
         """Reset (close and remove) the gateway for a specific device.
