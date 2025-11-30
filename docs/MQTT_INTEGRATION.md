@@ -81,11 +81,11 @@ mosquitto_sub -h localhost -t "modbus/data/office-eng/#" -v
 ---
 
 ## 🔧 Troubleshooting
-
-### "aiomqtt library not found"
+    
+### "gmqtt library not found"
 Ensure you have installed the required dependencies:
 ```bash
-pip install aiomqtt
+pip install gmqtt
 ```
 
 ### No Data Appearing

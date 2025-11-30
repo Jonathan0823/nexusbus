@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
+import uuid
 from typing import Any, Optional
 
 try:
-    import aiomqtt
+    from gmqtt import Client as MQTTClient
+
     HAS_MQTT = True
 except ImportError:
     HAS_MQTT = False
@@ -19,14 +20,14 @@ logger = logging.getLogger(__name__)
 
 
 class MQTTClientManager:
-    """Manages MQTT connection and publishing."""
+    """Manages MQTT connection and publishing using gmqtt."""
 
     def __init__(self) -> None:
-        self._client: Optional[aiomqtt.Client] = None
+        self._client: Optional[MQTTClient] = None
         self._enabled = False
-        
+
         if not HAS_MQTT:
-            logger.warning("aiomqtt library not found. MQTT support disabled.")
+            logger.warning("gmqtt library not found. MQTT support disabled.")
             return
 
         if not settings.MQTT_BROKER_HOST:
@@ -40,45 +41,42 @@ class MQTTClientManager:
         self._password = settings.MQTT_PASSWORD
         self._topic_prefix = settings.MQTT_TOPIC_PREFIX.rstrip("/")
 
-        logger.info(f"MQTT configured: {self._host}:{self._port}")
+        # Generate unique client ID
+        client_id = f"modbus-middleware-{uuid.uuid4().hex[:8]}"
+        self._client = MQTTClient(client_id)
+
+        # Set auth if provided
+        if self._username:
+            self._client.set_auth_credentials(self._username, self._password)
+
+        logger.info(
+            f"MQTT configured: {self._host}:{self._port} (Client ID: {client_id})"
+        )
 
     async def start(self) -> None:
         """Start the MQTT client (connect)."""
-        if not self._enabled:
+        if not self._enabled or not self._client:
             return
 
         try:
-            # Create client instance
-            self._client = aiomqtt.Client(
-                hostname=self._host,
-                port=self._port,
-                username=self._username,
-                password=self._password,
-            )
-            
-            # Connect
-            await self._client.__aenter__()
+            await self._client.connect(self._host, self._port)
             logger.info("Connected to MQTT Broker")
-            
         except Exception as e:
             logger.error(f"Failed to connect to MQTT Broker: {e}")
-            # We don't raise here to keep the app running without MQTT
-            self._client = None
+            # Don't raise, just log. App continues without MQTT.
 
     async def stop(self) -> None:
         """Stop the MQTT client (disconnect)."""
-        if self._client:
+        if self._client and self._client.is_connected:
             try:
-                await self._client.__aexit__(None, None, None)
+                await self._client.disconnect()
                 logger.info("Disconnected from MQTT Broker")
             except Exception as e:
                 logger.error(f"Error disconnecting from MQTT: {e}")
-            finally:
-                self._client = None
 
     async def publish(self, topic_suffix: str, payload: Any) -> None:
         """Publish data to MQTT.
-        
+
         Args:
             topic_suffix: Suffix to append to prefix (e.g. 'device/holding/0')
             payload: Data to publish (will be JSON encoded)
@@ -86,18 +84,23 @@ class MQTTClientManager:
         if not self._enabled or not self._client:
             return
 
+        if not self._client.is_connected:
+            # Optional: Try to reconnect logic could go here,
+            # but gmqtt handles auto-reconnect for lost connections usually.
+            # If initial connect failed, we might be disconnected.
+            return
+
         topic = f"{self._topic_prefix}/{topic_suffix}"
-        
+
         try:
             # Ensure payload is JSON serializable
             message = json.dumps(payload, default=str)
-            
-            await self._client.publish(topic, payload=message)
+
+            self._client.publish(topic, message, qos=0)
             logger.debug(f"Published to {topic}")
-            
+
         except Exception as e:
             logger.error(f"Failed to publish to {topic}: {e}")
-            # Optional: Try to reconnect if connection lost?
-            # For now, we just log error. aiomqtt client might need re-init if connection drops.
+
 
 mqtt_manager = MQTTClientManager()
