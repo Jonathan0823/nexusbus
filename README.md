@@ -150,11 +150,11 @@ This application uses a `.env` file for configuration. Copy `.env.example` to `.
 
 **Application Settings**
 
-| Variable                | Description                              | Default             |
-| :---------------------- | :--------------------------------------- | :------------------ |
-| `APP_NAME`              | Application name.                        | `NexusBus`          |
-| `APP_VERSION`           | Application version.                     | `0.1.0`             |
-| `POLL_INTERVAL_SECONDS` | Polling interval for background service. | `5`                 |
+| Variable                | Description                              | Default    |
+| :---------------------- | :--------------------------------------- | :--------- |
+| `APP_NAME`              | Application name.                        | `NexusBus` |
+| `APP_VERSION`           | Application version.                     | `0.1.0`    |
+| `POLL_INTERVAL_SECONDS` | Polling interval for background service. | `5`        |
 
 ### Device Parameters
 
@@ -464,7 +464,7 @@ curl -X POST http://localhost:8000/api/admin/devices/reload
 
 ## 📝 License
 
-[Your License Here]
+Apache License 2.0 (Copyright (c) 2025 Eguin Jonathan)
 
 ---
 
@@ -480,4 +480,3 @@ curl -X POST http://localhost:8000/api/admin/devices/reload
 ---
 
 **Built with ❤️ using FastAPI, PostgreSQL, and pymodbus**
-
