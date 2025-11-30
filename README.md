@@ -1,203 +1,173 @@
 # Modbus Middleware
 
-A FastAPI-based middleware application designed to interface with Modbus devices (TCP/RTU). It manages connections, handles device configuration via PostgreSQL database, and exposes a REST API for reading/writing registers and managing devices dynamically.
+> **FastAPI-based middleware for Modbus TCP/RTU devices with database-driven configuration**
 
-## Features
+[![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.104+-green.svg)](https://fastapi.tiangolo.com/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15+-blue.svg)](https://www.postgresql.org/)
 
-- **Database-Driven Configuration**: Store and manage Modbus device configurations in PostgreSQL
-- **Dynamic Device Management**: Add, update, or remove devices via REST API without server restart
-- **Connection Pooling**: Efficiently manages Modbus TCP connections, including shared gateways
-- **Request Timeout Handling**: Automatic timeout and connection reset for unresponsive devices
-- **REST API**: Simple endpoints to interact with Modbus devices and manage configurations
-- **Async Support**: Full async/await support with asyncpg for optimal performance
-- **Polling**: Optional background polling of registers
-- **Caching**: Register value caching for improved performance
+---
 
-## Installation
+## 📚 Documentation Navigation
 
-1.  Clone the repository.
-2.  Create a virtual environment:
-    ```bash
-    python -m venv venv
-    # On Windows PowerShell:
-    .\venv\Scripts\Activate.ps1
-    # On Windows CMD:
-    venv\Scripts\activate.bat
-    # On Linux/Mac:
-    source venv/bin/activate
-    ```
-3.  Install dependencies:
-    ```bash
-    pip install -r requirements.txt
-    ```
+| **Quick Start**                       | **Device Management**                                                  | **Polling**                                       | **Migrations**                            |
+| ------------------------------------- | ---------------------------------------------------------------------- | ------------------------------------------------- | ----------------------------------------- |
+| [Database Setup](./DATABASE_SETUP.md) | [Device API Guide](./docs/DEVICE_MANAGEMENT.md)                        | [Polling Config](./docs/POLLING_CONFIGURATION.md) | [Migration Guide](./migrations/README.md) |
+| [Quick Reference](#quick-reference)   | [Create/Update Devices](./docs/DEVICE_MANAGEMENT.md#create-new-device) | [Quick Start](./docs/POLLING_QUICK_START.md)      | [Run Migrations](#database-setup)         |
 
-## Database Setup
+### 📖 Complete Documentation Index
 
-This application uses PostgreSQL to store device configurations.
+- **[DATABASE_SETUP.md](./DATABASE_SETUP.md)** - Complete setup guide & documentation index
+- **[DEVICE_MANAGEMENT.md](./docs/DEVICE_MANAGEMENT.md)** - Device CRUD API reference (15.7 KB)
+- **[POLLING_CONFIGURATION.md](./docs/POLLING_CONFIGURATION.md)** - Automatic polling setup (8.0 KB)
+- **[POLLING_QUICK_START.md](./docs/POLLING_QUICK_START.md)** - Quick polling guide (3.8 KB)
+- **[Migration Guide](./migrations/README.md)** - Database migration system (5.6 KB)
 
-### 1. Install PostgreSQL
+---
 
-Make sure PostgreSQL is installed and running on your system.
+## ✨ Features
 
-### 2. Create Database
+- ✅ **Database-Driven Configuration** - Store and manage Modbus devices in PostgreSQL
+- ✅ **Dynamic Device Management** - Add/update/remove devices via REST API without restart
+- ✅ **Automatic Polling** - Configure registers to poll automatically from database
+- ✅ **Hot-Reload** - Apply configuration changes without server restart
+- ✅ **Connection Pooling** - Efficiently manage Modbus TCP connections & shared gateways
+- ✅ **Request Timeout Handling** - Automatic timeout and connection reset
+- ✅ **REST API** - Complete API for device interaction and management
+- ✅ **Async Support** - Full async/await with asyncpg for optimal performance
+- ✅ **Caching** - Register value caching for improved performance
+- ✅ **Soft Delete** - Deactivate devices/polling without losing configuration
 
-```sql
-CREATE DATABASE modbus_db;
-```
+---
 
-### 3. Configure Environment
+## 🚀 Quick Start
 
-Copy `.env.example` to `.env` and update with your database credentials:
-
-```env
-DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/modbus_db
-DATABASE_ECHO=false
-```
-
-### 4. Initialize Database
-
-Run the setup script to create tables and seed initial devices:
+### 1. Installation
 
 ```bash
-python setup_db.py
+# Clone repository
+git clone <repository-url>
+cd modbus_middleware
+
+# Create virtual environment
+python -m venv venv
+.\venv\Scripts\Activate.ps1  # Windows PowerShell
+# source venv/bin/activate    # Linux/Mac
+
+# Install dependencies
+pip install -r requirements.txt
 ```
 
-This will:
+### 2. Database Setup
 
-- Create the `modbus_devices` table
-- Seed initial device configurations from hardcoded defaults
+**Configure Environment:**
 
-## Usage
+```bash
+cp .env.example .env
+# Edit .env with your PostgreSQL credentials
+```
 
-Start the application using `uvicorn`:
+**Run Migrations:**
+
+```bash
+python migrate.py
+```
+
+This creates:
+
+- ✅ `modbus_devices` table with sample devices
+- ✅ `polling_targets` table with sample polling configs
+
+**[Full Migration Guide →](./migrations/README.md)**
+
+### 3. Start Application
 
 ```bash
 uvicorn main:app --reload
 ```
 
-The API will be available at `http://localhost:8000`.
-Interactive API documentation is available at `http://localhost:8000/docs`.
+**Access:**
 
-## Configuration
+- API: http://localhost:8000
+- Interactive Docs: http://localhost:8000/docs
+- Health Check: http://localhost:8000/health
 
-### Device Configuration
+---
 
-Devices can be configured in two ways:
+## 📖 API Quick Reference
 
-1. **Database (Recommended)**: Manage devices via Admin API endpoints
-2. **Hardcoded Fallback**: Defined in `app/config/devices.py` (used if database is unavailable)
+### Device Operations
+
+| Endpoint                            | Method | Description    | Docs                                              |
+| ----------------------------------- | ------ | -------------- | ------------------------------------------------- |
+| `/api/devices`                      | GET    | List devices   | [→](./docs/DEVICE_MANAGEMENT.md#list-all-devices) |
+| `/api/devices/{id}/registers`       | GET    | Read registers | [→](#read-registers)                              |
+| `/api/devices/{id}/registers/write` | POST   | Write register | [→](#write-register)                              |
+| `/api/devices/gateways`             | GET    | Gateway status | [→](#list-gateways)                               |
+
+### Admin - Device Management
+
+| Endpoint                    | Method | Description            | Docs                                                          |
+| --------------------------- | ------ | ---------------------- | ------------------------------------------------------------- |
+| `/api/admin/devices`        | GET    | List all devices       | [→](./docs/DEVICE_MANAGEMENT.md#list-all-devices)             |
+| `/api/admin/devices`        | POST   | Create device          | [→](./docs/DEVICE_MANAGEMENT.md#create-new-device)            |
+| `/api/admin/devices/{id}`   | PUT    | Update device          | [→](./docs/DEVICE_MANAGEMENT.md#update-device)                |
+| `/api/admin/devices/{id}`   | DELETE | Soft delete            | [→](./docs/DEVICE_MANAGEMENT.md#delete-device-soft-delete)    |
+| `/api/admin/devices/reload` | POST   | **Hot-reload configs** | [→](./docs/DEVICE_MANAGEMENT.md#reload-device-configurations) |
+
+### Admin - Polling Management
+
+| Endpoint                  | Method | Description           | Docs                                                                   |
+| ------------------------- | ------ | --------------------- | ---------------------------------------------------------------------- |
+| `/api/admin/polling`      | GET    | List polling targets  | [→](./docs/POLLING_CONFIGURATION.md#list-all-polling-targets)          |
+| `/api/admin/polling`      | POST   | Create polling target | [→](./docs/POLLING_CONFIGURATION.md#create-new-polling-target)         |
+| `/api/admin/polling/{id}` | PUT    | Update target         | [→](./docs/POLLING_CONFIGURATION.md#update-polling-target)             |
+| `/api/admin/polling/{id}` | DELETE | Soft delete           | [→](./docs/POLLING_CONFIGURATION.md#delete-polling-target-soft-delete) |
+
+**[Complete API Documentation →](./docs/DEVICE_MANAGEMENT.md)**
+
+---
+
+## 📦 Configuration
 
 ### Device Parameters
 
-- `device_id` (str): Unique identifier for the device (used in API URLs)
-- `host` (str): IP address of the Modbus device or gateway
-- `port` (int): TCP port (default is usually 502 or 8899 for some gateways)
-- `slave_id` (int): The Modbus Slave ID (Unit ID)
-- `timeout` (int): Connection/Read timeout in seconds (default: 10)
-- `framer` (str): The framing used (`RTU` or `SOCKET`)
-- `max_retries` (int): Maximum retry attempts (default: 5)
-- `retry_delay` (float): Delay between retries in seconds (default: 0.1)
+| Parameter     | Type    | Required | Description                     | Default |
+| ------------- | ------- | -------- | ------------------------------- | ------- |
+| `device_id`   | string  | ✅       | Unique device identifier        | -       |
+| `host`        | string  | ✅       | IP address or hostname          | -       |
+| `port`        | integer | ✅       | TCP port (e.g., 502, 8899)      | -       |
+| `slave_id`    | integer | ✅       | Modbus slave ID (1-247)         | -       |
+| `timeout`     | integer | ❌       | Connection timeout (seconds)    | 10      |
+| `framer`      | string  | ❌       | RTU, SOCKET, or ASCII           | RTU     |
+| `max_retries` | integer | ❌       | Max retry attempts              | 5       |
+| `retry_delay` | float   | ❌       | Delay between retries (seconds) | 0.1     |
 
-### Shared Gateways
+**[Full Configuration Guide →](./docs/DEVICE_MANAGEMENT.md#device-parameters)**
 
-If multiple devices share the same `host` and `port` (e.g., multiple RS485 devices connected to a single Modbus TCP Gateway), the `ModbusClientManager` will automatically handle connection sharing and serialization.
+### Environment Variables
 
-### Timeout Configuration
-
-API requests have a 5-second timeout by default. If a Modbus request takes longer, it will automatically timeout and reset the connection. Configure in `app/config/devices.py`:
-
-```python
-API_REQUEST_TIMEOUT_SECONDS = 5  # Adjust as needed
+```env
+# .env file
+DATABASE_URL=postgresql+asyncpg://user:password@localhost:5432/modbus_db
+DATABASE_ECHO=false
 ```
 
-### Polling Configuration
+---
 
-Configure background polling in `app/config/devices.py`:
+## 💡 Usage Examples
 
-- `DEFAULT_POLL_TARGETS`: A list of registers to poll periodically
-- `POLL_INTERVAL_SECONDS`: How often to poll (in seconds)
-
-## Project Structure
-
-```
-modbus_middleware/
-├── app/
-│   ├── api/
-│   │   ├── routes.py          # Modbus device API endpoints
-│   │   └── admin_routes.py    # Admin API for device management
-│   ├── config/
-│   │   └── devices.py         # Device configuration loader
-│   ├── core/
-│   │   ├── config.py          # Application settings
-│   │   ├── modbus_client.py   # Modbus client manager
-│   │   └── cache.py           # Register caching
-│   ├── database/
-│   │   ├── models.py          # SQLModel database models
-│   │   ├── connection.py      # Database connection
-│   │   └── crud.py            # CRUD operations
-│   └── services/
-│       └── poller.py          # Background polling service
-├── main.py                    # Application entry point
-├── setup_db.py                # Database setup script
-├── requirements.txt           # Python dependencies
-└── .env.example               # Environment variables template
-```
-
-## API Endpoints
-
-### Modbus Device API
-
-The Modbus API is prefixed with `/api/devices`.
-
-#### List Devices
-
-**GET** `/api/devices`
-
-Returns a list of all configured devices.
-
-#### List Gateways
-
-**GET** `/api/devices/gateways`
-
-Returns the status of all active Modbus gateways (connections).
-
-#### Read Registers
-
-**GET** `/api/devices/{device_id}/registers`
-
-Reads registers from a device.
-
-**Parameters:**
-
-- `device_id` (path): The ID of the device
-- `address` (query): Starting register address (0-based)
-- `count` (query): Number of registers to read (default: 1, max: 125)
-- `register_type` (query): Type of register (`holding`, `input`, `coil`, `discrete`). Default: `holding`
-- `source` (query): `live` or `cache`. Default: `live`
-
-**Example:**
+### Read Registers
 
 ```bash
+# Read 10 holding registers starting at address 0
 curl "http://localhost:8000/api/devices/office-eng/registers?address=0&count=10"
+
+# Read from cache (faster, uses polling data)
+curl "http://localhost:8000/api/devices/office-eng/registers?address=0&count=10&source=cache"
 ```
 
-#### Write Register
-
-**POST** `/api/devices/{device_id}/registers/write`
-
-Writes a value to a holding register.
-
-**Body:**
-
-```json
-{
-  "address": 10,
-  "value": 123,
-  "register_type": "holding"
-}
-```
-
-**Example:**
+### Write Register
 
 ```bash
 curl -X POST http://localhost:8000/api/devices/office-eng/registers/write \
@@ -205,191 +175,279 @@ curl -X POST http://localhost:8000/api/devices/office-eng/registers/write \
   -d '{"address": 10, "value": 123, "register_type": "holding"}'
 ```
 
----
-
-### Admin API
-
-The Admin API is prefixed with `/api/admin/devices`.
-
-#### List All Devices
-
-**GET** `/api/admin/devices`
-
-Returns all devices including inactive ones.
-
-#### List Active Devices
-
-**GET** `/api/admin/devices/active`
-
-Returns only active devices.
-
-#### Get Device Details
-
-**GET** `/api/admin/devices/{device_id}`
-
-Get details of a specific device.
-
-#### Create Device
-
-**POST** `/api/admin/devices`
-
-Create a new Modbus device configuration.
-
-**Body:**
-
-```json
-{
-  "device_id": "new-device",
-  "host": "10.19.20.149",
-  "port": 8899,
-  "slave_id": 1,
-  "timeout": 10,
-  "framer": "RTU"
-}
-```
-
-**Example:**
+### Create Device
 
 ```bash
 curl -X POST http://localhost:8000/api/admin/devices \
   -H "Content-Type: application/json" \
   -d '{
-    "device_id": "new-device",
-    "host": "10.19.20.149",
-    "port": 8899,
-    "slave_id": 1
+    "device_id": "warehouse-1",
+    "host": "192.168.1.100",
+    "port": 502,
+    "slave_id": 3,
+    "framer": "SOCKET"
   }'
-```
 
-#### Update Device
-
-**PUT** `/api/admin/devices/{device_id}`
-
-Update device configuration.
-
-**Body:**
-
-```json
-{
-  "timeout": 15,
-  "max_retries": 3
-}
-```
-
-#### Delete Device
-
-**DELETE** `/api/admin/devices/{device_id}`
-
-Soft delete a device (sets `is_active` to false).
-
-#### Activate Device
-
-**POST** `/api/admin/devices/{device_id}/activate`
-
-Reactivate a previously deleted device.
-
-#### Reload Configurations
-
-**POST** `/api/admin/devices/reload`
-
-Reload device configurations from database into the Modbus manager without restarting the server.
-
-**Example:**
-
-```bash
+# Reload to apply changes
 curl -X POST http://localhost:8000/api/admin/devices/reload
 ```
 
-## Features in Detail
+**[More Examples →](./docs/DEVICE_MANAGEMENT.md#usage-examples)**
 
-### Automatic Timeout & Recovery
-
-- API requests timeout after 5 seconds if Modbus device is unresponsive
-- Automatically resets the gateway connection on timeout
-- Next request will attempt a fresh connection
-- No manual server restart needed
-
-### Database-Driven Configuration
-
-- Device configurations stored in PostgreSQL
-- Manage devices via REST API
-- Hot reload configurations without server restart
-- Fallback to hardcoded configs if database unavailable
-
-### Async Performance
-
-- Full async/await support throughout the application
-- Uses `asyncpg` for non-blocking database operations
-- Concurrent request handling for optimal throughput
-- Thread pool for blocking Modbus operations
-
-## Health Check
-
-**GET** `/health`
-
-Returns server health status.
+### Configure Polling
 
 ```bash
+# Create polling target
+curl -X POST http://localhost:8000/api/admin/polling \
+  -H "Content-Type: application/json" \
+  -d '{
+    "device_id": "office-eng",
+    "register_type": "holding",
+    "address": 0,
+    "count": 10,
+    "description": "Main control registers"
+  }'
+
+# Changes apply automatically (hot-reload)
+# Wait 5 seconds, then check cache
+curl "http://localhost:8000/api/devices/office-eng/registers?address=0&count=10&source=cache"
+```
+
+**[Polling Guide →](./docs/POLLING_CONFIGURATION.md)**
+
+---
+
+## 🗂️ Project Structure
+
+```
+modbus_middleware/
+├── README.md                          # This file
+├── DATABASE_SETUP.md                  # Setup guide & docs index
+├── migrate.py                         # Main migration runner
+│
+├── app/
+│   ├── api/
+│   │   ├── routes.py                 # Device API endpoints
+│   │   ├── admin_routes.py           # Admin device management
+│   │   └── polling_routes.py         # Admin polling management
+│   ├── config/
+│   │   └── devices.py                # Device configuration loader
+│   ├── core/
+│   │   ├── config.py                 # Application settings
+│   │   ├── modbus_client.py          # Modbus client manager
+│   │   └── cache.py                  # Register caching
+│   ├── database/
+│   │   ├── models.py                 # SQLModel database models
+│   │   ├── connection.py             # Database connection
+│   │   └── crud.py                   # CRUD operations
+│   └── services/
+│       └── poller.py                 # Background polling service
+│
+├── migrations/                        # Database migrations
+│   ├── README.md                     # Migration guide
+│   ├── base.py                       # Migration utilities
+│   ├── 001_initial_setup.py         # Create devices table
+│   └── 002_add_polling_targets.py   # Create polling table
+│
+├── docs/                              # Documentation
+│   ├── DEVICE_MANAGEMENT.md          # Device API guide (15.7 KB)
+│   ├── POLLING_CONFIGURATION.md      # Polling guide (8.0 KB)
+│   └── POLLING_QUICK_START.md        # Quick polling guide (3.8 KB)
+│
+├── main.py                            # Application entry point
+├── requirements.txt                   # Python dependencies
+└── .env.example                       # Environment variables template
+```
+
+---
+
+## 🎯 Key Features Explained
+
+### Hot-Reload Configuration
+
+**No restart needed!**
+
+```bash
+# 1. Add device
+curl -X POST /api/admin/devices -d '{...}'
+
+# 2. Reload (applies instantly)
+curl -X POST /api/admin/devices/reload
+
+# 3. Use immediately
+curl "http://localhost:8000/api/devices/new-device/registers?..."
+```
+
+**Polling auto-reloads** every cycle (default: 5 seconds).
+
+**[Learn More →](./docs/DEVICE_MANAGEMENT.md#hot-reload-support)**
+
+### Automatic Polling
+
+Configure registers to poll automatically and serve from cache:
+
+```bash
+# Configure polling via database
+POST /api/admin/polling
+
+# Data polled every 5 seconds
+# Access cached data (fast!)
+GET /api/devices/{id}/registers?source=cache
+```
+
+**[Polling Guide →](./docs/POLLING_CONFIGURATION.md)**
+
+### Connection Management
+
+- **Shared Gateways**: Multiple devices on same gateway share one connection
+- **Auto Recovery**: Timeout handling with automatic reconnection
+- **Request Serialization**: Prevents slave ID conflicts
+- **Thread Pooling**: Non-blocking Modbus operations
+
+**[Architecture Details →](./docs/DEVICE_MANAGEMENT.md#architecture)**
+
+---
+
+## 🧪 Testing
+
+```bash
+# 1. Check health
 curl http://localhost:8000/health
+
+# 2. List devices
+curl http://localhost:8000/api/admin/devices
+
+# 3. Test read
+curl "http://localhost:8000/api/devices/office-eng/registers?address=0&count=10"
+
+# 4. Check gateway status
+curl http://localhost:8000/api/devices/gateways
 ```
 
-Response:
+**[Full Testing Guide →](./docs/POLLING_QUICK_START.md)**
 
-```json
-{
-  "status": "ok"
-}
-```
+---
 
-## Development
+## 🔧 Development
 
-### Running in Development Mode
+### Running in Development
 
 ```bash
 uvicorn main:app --reload --log-level debug
 ```
 
-### Database Migrations
-
-For production, use Alembic for database migrations:
+### Creating New Migrations
 
 ```bash
-# Initialize Alembic (if not already done)
-alembic init alembic
+# Create migration file
+cp migrations/001_initial_setup.py migrations/003_my_feature.py
 
-# Create a migration
-alembic revision --autogenerate -m "description"
+# Edit the migration
+# Update migrate.py to include it
 
-# Apply migrations
-alembic upgrade head
+# Run it
+python migrate.py --migration 003
 ```
 
-## Troubleshooting
+**[Migration Guide →](./migrations/README.md#creating-new-migrations)**
+
+---
+
+## ⚠️ Important Notes
+
+### Always Reload After Device Changes
+
+```bash
+# ❌ WRONG - changes won't apply
+curl -X POST /api/admin/devices -d '{...}'
+
+# ✅ CORRECT - reload to apply
+curl -X POST /api/admin/devices -d '{...}'
+curl -X POST /api/admin/devices/reload
+```
+
+### Polling Auto-Reloads
+
+Polling configuration reloads automatically every polling cycle. **No manual reload needed for polling!**
+
+### Soft Delete
+
+- DELETE endpoints set `is_active=false` (preserves data)
+- Reactivate with `/activate` endpoint
+- Data remains in database for audit trail
+
+---
+
+## 📚 Learn More
+
+### By Topic
+
+- **Getting Started**: [DATABASE_SETUP.md](./DATABASE_SETUP.md)
+- **Device Management**: [DEVICE_MANAGEMENT.md](./docs/DEVICE_MANAGEMENT.md)
+- **Polling Setup**: [POLLING_CONFIGURATION.md](./docs/POLLING_CONFIGURATION.md)
+- **Quick Testing**: [POLLING_QUICK_START.md](./docs/POLLING_QUICK_START.md)
+- **Database Migrations**: [migrations/README.md](./migrations/README.md)
+
+### By Task
+
+| I want to...        | Read this                                                              |
+| ------------------- | ---------------------------------------------------------------------- |
+| Set up the database | [DATABASE_SETUP.md](./DATABASE_SETUP.md)                               |
+| Add a new device    | [Device Creation Guide](./docs/DEVICE_MANAGEMENT.md#create-new-device) |
+| Configure polling   | [Polling Configuration](./docs/POLLING_CONFIGURATION.md)               |
+| Create a migration  | [Migration Guide](./migrations/README.md#creating-new-migrations)      |
+| Troubleshoot issues | [Troubleshooting](#troubleshooting)                                    |
+
+---
+
+## 🚨 Troubleshooting
 
 ### Database Connection Issues
 
-If the application fails to connect to the database, it will automatically fall back to hardcoded device configurations in `app/config/devices.py`.
+Check `.env` configuration:
 
-Check logs for:
-
-```
-WARNING: Failed to load devices from database: <error>. Using hardcoded configs.
+```env
+DATABASE_URL=postgresql+asyncpg://user:password@localhost:5432/modbus_db
 ```
 
-### Modbus Timeout Issues
+If database is unavailable, app falls back to hardcoded configs in `app/config/devices.py`.
 
-If Modbus requests are timing out:
+**[More Help →](./docs/DEVICE_MANAGEMENT.md#troubleshooting)**
 
-1. Check device connectivity
-2. Verify IP address and port
+### Device Not Found
+
+Did you forget to reload?
+
+```bash
+curl -X POST http://localhost:8000/api/admin/devices/reload
+```
+
+### Modbus Timeout
+
+1. Check device connectivity: `ping {host}`
+2. Verify port is open
 3. Confirm slave_id is correct
-4. Increase timeout value via Admin API
-5. Check gateway connection status: `GET /api/devices/gateways`
+4. Check gateway status: `GET /api/devices/gateways`
+5. Increase timeout via Admin API
 
-### Connection Reset
+**[Troubleshooting Guide →](./docs/DEVICE_MANAGEMENT.md#troubleshooting)**
 
-If you see "Connection reset" messages, the timeout handler is working correctly. The gateway will automatically reconnect on the next request.
+---
 
-## License
+## 📝 License
 
 [Your License Here]
+
+---
+
+## 🔗 Quick Links
+
+- **[📖 Complete Documentation Index](./DATABASE_SETUP.md)**
+- **[🔧 Device API Reference](./docs/DEVICE_MANAGEMENT.md)**
+- **[📊 Polling Configuration](./docs/POLLING_CONFIGURATION.md)**
+- **[🗃️ Database Migrations](./migrations/README.md)**
+- **[💻 Interactive API Docs](http://localhost:8000/docs)** (when running)
+
+---
+
+**Built with ❤️ using FastAPI, PostgreSQL, and pymodbus**
