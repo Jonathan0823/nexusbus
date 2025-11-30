@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from contextlib import suppress
+from contextlib import suppress, asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -27,25 +27,14 @@ from app.core.mqtt_client import mqtt_manager
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="Modbus Middleware", version="0.1.0")
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-app.include_router(devices_router, prefix="/api")
-app.include_router(admin_router, prefix="/api")
-app.include_router(polling_router, prefix="/api")
-app.include_router(cache_router, prefix="/api")
 
-
-# ... imports ...
-
-
-@app.on_event("startup")
-async def on_startup() -> None:
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Lifespan context manager for the FastAPI application.
+    Handles startup and shutdown logic.
+    """
+    # --- STARTUP LOGIC ---
     logger.info("Starting Modbus middleware service")
 
     # Initialize database
@@ -84,9 +73,9 @@ async def on_startup() -> None:
         name="modbus-poller",
     )
 
+    yield  # Application is running...
 
-@app.on_event("shutdown")
-async def on_shutdown() -> None:
+    # --- SHUTDOWN LOGIC ---
     logger.info("Shutting down Modbus middleware service")
     poller_task = getattr(app.state, "poller_task", None)
     if poller_task:
@@ -108,6 +97,20 @@ async def on_shutdown() -> None:
     # Close database connections
     await close_db()
     logger.info("Database connections closed")
+
+
+app = FastAPI(title="Modbus Middleware", version="0.1.0", lifespan=lifespan)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+app.include_router(devices_router, prefix="/api")
+app.include_router(admin_router, prefix="/api")
+app.include_router(polling_router, prefix="/api")
+app.include_router(cache_router, prefix="/api")
 
 
 @app.get("/health", tags=["system"])
