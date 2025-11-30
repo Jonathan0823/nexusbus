@@ -13,20 +13,6 @@
 | **Quick Start**                       | **Device Management**                                                  | **Polling**                                       | **Migrations**                            |
 | ------------------------------------- | ---------------------------------------------------------------------- | ------------------------------------------------- | ----------------------------------------- |
 | [Database Setup](./DATABASE_SETUP.md) | [Device API Guide](./docs/DEVICE_MANAGEMENT.md)                        | [Polling Config](./docs/POLLING_CONFIGURATION.md) | [Migration Guide](./migrations/README.md) |
-| [Quick Reference](#quick-reference)   | [Create/Update Devices](./docs/DEVICE_MANAGEMENT.md#create-new-device) | [Quick Start](./docs/POLLING_QUICK_START.md)      | [Run Migrations](#database-setup)         |
-
-### 📖 Complete Documentation Index
-
-- **[DATABASE_SETUP.md](./DATABASE_SETUP.md)** - Complete setup guide & documentation index
-- **[DEVICE_MANAGEMENT.md](./docs/DEVICE_MANAGEMENT.md)** - Device CRUD API reference (15.7 KB)
-- **[POLLING_CONFIGURATION.md](./docs/POLLING_CONFIGURATION.md)** - Automatic polling setup (8.0 KB)
-- **[POLLING_QUICK_START.md](./docs/POLLING_QUICK_START.md)** - Quick polling guide (3.8 KB)
-- **[Migration Guide](./migrations/README.md)** - Database migration system (5.6 KB)
-
----
-
-## ✨ Features
-
 - ✅ **Database-Driven Configuration** - Store and manage Modbus devices in PostgreSQL
 - ✅ **Dynamic Device Management** - Add/update/remove devices via REST API without restart
 - ✅ **Automatic Polling** - Configure registers to poll automatically from database
@@ -36,6 +22,7 @@
 - ✅ **REST API** - Complete API for device interaction and management
 - ✅ **Async Support** - Full async/await with asyncpg for optimal performance
 - ✅ **Caching** - Register value caching for improved performance
+- ✅ **MQTT Integration** - Real-time data publishing to MQTT brokers
 - ✅ **Soft Delete** - Deactivate devices/polling without losing configuration
 
 ---
