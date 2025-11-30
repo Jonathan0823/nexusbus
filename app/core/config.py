@@ -23,5 +23,12 @@ class Settings(BaseSettings):
     APP_NAME: str = "Modbus Middleware"
     APP_VERSION: str = "0.1.0"
 
+    # MQTT Configuration (Optional)
+    MQTT_BROKER_HOST: str | None = None
+    MQTT_BROKER_PORT: int = 1883
+    MQTT_USERNAME: str | None = None
+    MQTT_PASSWORD: str | None = None
+    MQTT_TOPIC_PREFIX: str = "modbus/data"
+
 
 settings = Settings()
