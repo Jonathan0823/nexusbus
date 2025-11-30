@@ -10,9 +10,10 @@
 
 ## 📚 Documentation Navigation
 
-| **Quick Start**                       | **Device Management**                                                  | **Polling**                                       | **MQTT**                                       | **Migrations**                            |
-| ------------------------------------- | ---------------------------------------------------------------------- | ------------------------------------------------- | ---------------------------------------------- | ----------------------------------------- |
-| [Database Setup](./DATABASE_SETUP.md) | [Device API Guide](./docs/DEVICE_MANAGEMENT.md)                        | [Polling Config](./docs/POLLING_CONFIGURATION.md) | [MQTT Guide](./docs/MQTT_INTEGRATION.md)       | [Migration Guide](./migrations/README.md) |
+| **Quick Start**                       | **Device Management**                           | **Polling**                                       | **MQTT**                                 | **Migrations**                            |
+| ------------------------------------- | ----------------------------------------------- | ------------------------------------------------- | ---------------------------------------- | ----------------------------------------- |
+| [Database Setup](./DATABASE_SETUP.md) | [Device API Guide](./docs/DEVICE_MANAGEMENT.md) | [Polling Config](./docs/POLLING_CONFIGURATION.md) | [MQTT Guide](./docs/MQTT_INTEGRATION.md) | [Migration Guide](./migrations/README.md) |
+
 - ✅ **Database-Driven Configuration** - Store and manage Modbus devices in PostgreSQL
 - ✅ **Dynamic Device Management** - Add/update/remove devices via REST API without restart
 - ✅ **Automatic Polling** - Configure registers to poll automatically from database
@@ -33,7 +34,7 @@
 
 ```bash
 # Clone repository
-git clone <repository-url>
+git clone https://github.com/Jonathan0823/modbus_middleware.git
 cd modbus_middleware
 
 # Create virtual environment
@@ -113,12 +114,12 @@ uvicorn main:app --reload
 
 ### Admin - Cache Management
 
-| Endpoint                     | Method | Description            | Docs |
-| ---------------------------- | ------ | ---------------------- | ---- |
-| `/api/admin/cache`           | GET    | Inspect all cache      | -    |
-| `/api/admin/cache/stats`     | GET    | Cache statistics       | -    |
-| `/api/admin/cache/device/{id}` | GET  | Inspect device cache   | -    |
-| `/api/admin/cache`           | DELETE | Clear all cache        | -    |
+| Endpoint                       | Method | Description          | Docs |
+| ------------------------------ | ------ | -------------------- | ---- |
+| `/api/admin/cache`             | GET    | Inspect all cache    | -    |
+| `/api/admin/cache/stats`       | GET    | Cache statistics     | -    |
+| `/api/admin/cache/device/{id}` | GET    | Inspect device cache | -    |
+| `/api/admin/cache`             | DELETE | Clear all cache      | -    |
 
 **[Complete API Documentation →](./docs/DEVICE_MANAGEMENT.md)**
 
@@ -132,28 +133,28 @@ This application uses a `.env` file for configuration. Copy `.env.example` to `.
 
 **Database Configuration**
 
-| Variable | Description | Default |
-| :--- | :--- | :--- |
-| `DATABASE_URL` | PostgreSQL connection string. | `postgresql+asyncpg://postgres:postgres@localhost:5432/modbus_db` |
-| `DATABASE_ECHO` | If `true`, logs SQL queries. | `false` |
+| Variable        | Description                   | Default                                                           |
+| :-------------- | :---------------------------- | :---------------------------------------------------------------- |
+| `DATABASE_URL`  | PostgreSQL connection string. | `postgresql+asyncpg://postgres:postgres@localhost:5432/modbus_db` |
+| `DATABASE_ECHO` | If `true`, logs SQL queries.  | `false`                                                           |
 
 **MQTT Configuration (Optional)**
 
-| Variable | Description | Default |
-| :--- | :--- | :--- |
-| `MQTT_BROKER_HOST` | Broker hostname/IP. Set to enable MQTT. | `None` |
-| `MQTT_BROKER_PORT` | Broker port number. | `1883` |
-| `MQTT_USERNAME` | MQTT Username. | `None` |
-| `MQTT_PASSWORD` | MQTT Password. | `None` |
-| `MQTT_TOPIC_PREFIX` | Prefix for published topics. | `modbus/data` |
+| Variable            | Description                             | Default       |
+| :------------------ | :-------------------------------------- | :------------ |
+| `MQTT_BROKER_HOST`  | Broker hostname/IP. Set to enable MQTT. | `None`        |
+| `MQTT_BROKER_PORT`  | Broker port number.                     | `1883`        |
+| `MQTT_USERNAME`     | MQTT Username.                          | `None`        |
+| `MQTT_PASSWORD`     | MQTT Password.                          | `None`        |
+| `MQTT_TOPIC_PREFIX` | Prefix for published topics.            | `modbus/data` |
 
 **Application Settings**
 
-| Variable | Description | Default |
-| :--- | :--- | :--- |
-| `APP_NAME` | Application name. | `Modbus Middleware` |
-| `APP_VERSION` | Application version. | `0.1.0` |
-| `POLL_INTERVAL_SECONDS` | Polling interval for background service. | `5` |
+| Variable                | Description                              | Default             |
+| :---------------------- | :--------------------------------------- | :------------------ |
+| `APP_NAME`              | Application name.                        | `Modbus Middleware` |
+| `APP_VERSION`           | Application version.                     | `0.1.0`             |
+| `POLL_INTERVAL_SECONDS` | Polling interval for background service. | `5`                 |
 
 ### Device Parameters
 
@@ -479,3 +480,4 @@ curl -X POST http://localhost:8000/api/admin/devices/reload
 ---
 
 **Built with ❤️ using FastAPI, PostgreSQL, and pymodbus**
+
