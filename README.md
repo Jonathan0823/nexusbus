@@ -1,6 +1,6 @@
-# Modbus Middleware
+# NexusBus
 
-> **FastAPI-based middleware for Modbus TCP/RTU devices with database-driven configuration**
+> **FastAPI-based Modbus TCP/RTU gateway for seamless data integration**
 
 [![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.104+-green.svg)](https://fastapi.tiangolo.com/)
@@ -34,8 +34,8 @@
 
 ```bash
 # Clone repository
-git clone https://github.com/Jonathan0823/modbus_middleware.git
-cd modbus_middleware
+git clone https://github.com/Jonathan0823/nexusbus.git
+cd nexusbus
 
 # Create virtual environment
 python -m venv venv
@@ -152,7 +152,7 @@ This application uses a `.env` file for configuration. Copy `.env.example` to `.
 
 | Variable                | Description                              | Default             |
 | :---------------------- | :--------------------------------------- | :------------------ |
-| `APP_NAME`              | Application name.                        | `Modbus Middleware` |
+| `APP_NAME`              | Application name.                        | `NexusBus`          |
 | `APP_VERSION`           | Application version.                     | `0.1.0`             |
 | `POLL_INTERVAL_SECONDS` | Polling interval for background service. | `5`                 |
 
