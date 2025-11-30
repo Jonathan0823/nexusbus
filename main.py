@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes import router as devices_router
 from app.api.admin_routes import router as admin_router
+from app.api.polling_routes import router as polling_router
 from app.config.devices import (
     DEFAULT_POLL_TARGETS,
     DEVICE_CONFIGS,
@@ -33,6 +34,7 @@ app.add_middleware(
 )
 app.include_router(devices_router, prefix="/api")
 app.include_router(admin_router, prefix="/api")
+app.include_router(polling_router, prefix="/api")
 
 
 @app.on_event("startup")
@@ -57,23 +59,18 @@ async def on_startup() -> None:
     app.state.modbus_manager = ModbusClientManager(device_configs)
     app.state.register_cache = RegisterCache()
 
-    if DEFAULT_POLL_TARGETS:
-        logger.info(
-            "Starting polling task with %s target(s) every %ss",
-            len(DEFAULT_POLL_TARGETS),
-            POLL_INTERVAL_SECONDS,
-        )
-        app.state.poller_task = asyncio.create_task(
-            poll_registers(
-                manager=app.state.modbus_manager,
-                cache=app.state.register_cache,
-                targets=DEFAULT_POLL_TARGETS,
-                interval_seconds=POLL_INTERVAL_SECONDS,
-            ),
-            name="modbus-poller",
-        )
-    else:
-        app.state.poller_task = None
+    # Start polling task (now loads targets from database automatically)
+    logger.info("Starting polling service (loading targets from database)")
+    app.state.poller_task = asyncio.create_task(
+        poll_registers(
+            manager=app.state.modbus_manager,
+            cache=app.state.register_cache,
+            interval_seconds=POLL_INTERVAL_SECONDS,
+            use_database=True,  # Use database for polling targets
+            fallback_targets=DEFAULT_POLL_TARGETS,  # Fallback if DB is empty
+        ),
+        name="modbus-poller",
+    )
 
 
 @app.on_event("shutdown")
