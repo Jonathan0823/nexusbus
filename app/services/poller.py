@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from typing import List
 
 
 from app.core.cache import RegisterCache
 from app.core.modbus_client import ModbusClientManager, ModbusClientError, RegisterType
+from app.core.mqtt_client import MQTTClientManager
 from app.database import crud
 from app.database.connection import async_session_maker
 
@@ -44,6 +46,7 @@ async def poll_registers(
     interval_seconds: int,
     use_database: bool = True,
     fallback_targets: List[dict] | None = None,
+    mqtt_manager: MQTTClientManager = None,  # Optional MQTT manager
 ) -> None:
     """Continuously poll configured registers and store them in cache.
 
@@ -53,6 +56,7 @@ async def poll_registers(
         interval_seconds: Polling interval in seconds
         use_database: If True, load targets from database; if False, use fallback_targets
         fallback_targets: Hardcoded targets to use if use_database=False
+        mqtt_manager: Optional MQTT manager for publishing data
     """
 
     if interval_seconds <= 0:
@@ -102,7 +106,7 @@ async def poll_registers(
                         address=address,
                         count=count,
                         retries=0,  # Fail fast!
-                        timeout=1.0, # Fast timeout for poller!
+                        timeout=1.0,  # Fast timeout for poller!
                     )
 
                     # Store in cache
@@ -112,6 +116,21 @@ async def poll_registers(
                         f"✓ Polled {device_id} {register_type.value} "
                         f"addr={address} count={count}"
                     )
+
+                    # Publish to MQTT (Fire & Forget)
+                    if mqtt_manager:
+                        # Topic: {prefix}/{device_id}/{register_type}/{address}
+                        topic_suffix = f"{device_id}/{register_type.value}/{address}"
+                        payload = {
+                            "device_id": device_id,
+                            "register_type": register_type.value,
+                            "address": address,
+                            "count": count,
+                            "values": data,
+                            "timestamp": time.time(),  # Standard Unix timestamp
+                        }
+                        # Run in background to not block polling loop
+                        asyncio.create_task(mqtt_manager.publish(topic_suffix, payload))
 
                 except (KeyError, ValueError) as exc:
                     # Invalid configuration - log once and skip

@@ -41,6 +41,7 @@ uvicorn main:app --reload
 |---------|----------|
 | **Devices** | http://localhost:8000/api/admin/devices |
 | **Polling** | http://localhost:8000/api/admin/polling |
+| **Cache** | http://localhost:8000/api/admin/cache |
 | **API Docs** | http://localhost:8000/docs |
 
 ## 📦 Migration System

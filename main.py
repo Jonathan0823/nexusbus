@@ -22,6 +22,8 @@ from app.core.modbus_client import ModbusClientManager
 from app.services.poller import poll_registers
 from app.database.connection import create_db_and_tables, close_db, async_session_maker
 
+from app.core.mqtt_client import mqtt_manager
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -39,16 +41,19 @@ app.include_router(polling_router, prefix="/api")
 app.include_router(cache_router, prefix="/api")
 
 
+# ... imports ...
+
+
 @app.on_event("startup")
 async def on_startup() -> None:
     logger.info("Starting Modbus middleware service")
-    
+
     # Initialize database
     try:
         logger.info("Creating database tables...")
         await create_db_and_tables()
         logger.info("Database initialized")
-        
+
         # Load devices from database
         async with async_session_maker() as session:
             device_configs = await load_device_configs(session)
@@ -56,10 +61,14 @@ async def on_startup() -> None:
     except Exception as e:
         logger.warning(f"Database initialization failed: {e}. Using hardcoded configs.")
         device_configs = DEVICE_CONFIGS
-    
+
     # Initialize Modbus manager with loaded configs
     app.state.modbus_manager = ModbusClientManager(device_configs)
     app.state.register_cache = RegisterCache()
+
+    # Start MQTT Client
+    await mqtt_manager.start()
+    app.state.mqtt_manager = mqtt_manager
 
     # Start polling task (now loads targets from database automatically)
     logger.info("Starting polling service (loading targets from database)")
@@ -70,6 +79,7 @@ async def on_startup() -> None:
             interval_seconds=POLL_INTERVAL_SECONDS,
             use_database=True,  # Use database for polling targets
             fallback_targets=DEFAULT_POLL_TARGETS,  # Fallback if DB is empty
+            mqtt_manager=app.state.mqtt_manager,
         ),
         name="modbus-poller",
     )
@@ -86,9 +96,15 @@ async def on_shutdown() -> None:
 
     manager: ModbusClientManager = app.state.modbus_manager
     await manager.close_all()
+
+    # Stop MQTT Client
+    mqtt_manager_inst = getattr(app.state, "mqtt_manager", None)
+    if mqtt_manager_inst:
+        await mqtt_manager_inst.stop()
+
     cache: RegisterCache = app.state.register_cache
     await cache.clear()
-    
+
     # Close database connections
     await close_db()
     logger.info("Database connections closed")
@@ -97,4 +113,3 @@ async def on_shutdown() -> None:
 @app.get("/health", tags=["system"])
 async def healthcheck() -> dict:
     return {"status": "ok"}
-

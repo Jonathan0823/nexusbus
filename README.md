@@ -10,23 +10,9 @@
 
 ## 📚 Documentation Navigation
 
-| **Quick Start**                       | **Device Management**                                                  | **Polling**                                       | **Migrations**                            |
-| ------------------------------------- | ---------------------------------------------------------------------- | ------------------------------------------------- | ----------------------------------------- |
-| [Database Setup](./DATABASE_SETUP.md) | [Device API Guide](./docs/DEVICE_MANAGEMENT.md)                        | [Polling Config](./docs/POLLING_CONFIGURATION.md) | [Migration Guide](./migrations/README.md) |
-| [Quick Reference](#quick-reference)   | [Create/Update Devices](./docs/DEVICE_MANAGEMENT.md#create-new-device) | [Quick Start](./docs/POLLING_QUICK_START.md)      | [Run Migrations](#database-setup)         |
-
-### 📖 Complete Documentation Index
-
-- **[DATABASE_SETUP.md](./DATABASE_SETUP.md)** - Complete setup guide & documentation index
-- **[DEVICE_MANAGEMENT.md](./docs/DEVICE_MANAGEMENT.md)** - Device CRUD API reference (15.7 KB)
-- **[POLLING_CONFIGURATION.md](./docs/POLLING_CONFIGURATION.md)** - Automatic polling setup (8.0 KB)
-- **[POLLING_QUICK_START.md](./docs/POLLING_QUICK_START.md)** - Quick polling guide (3.8 KB)
-- **[Migration Guide](./migrations/README.md)** - Database migration system (5.6 KB)
-
----
-
-## ✨ Features
-
+| **Quick Start**                       | **Device Management**                                                  | **Polling**                                       | **MQTT**                                       | **Migrations**                            |
+| ------------------------------------- | ---------------------------------------------------------------------- | ------------------------------------------------- | ---------------------------------------------- | ----------------------------------------- |
+| [Database Setup](./DATABASE_SETUP.md) | [Device API Guide](./docs/DEVICE_MANAGEMENT.md)                        | [Polling Config](./docs/POLLING_CONFIGURATION.md) | [MQTT Guide](./docs/MQTT_INTEGRATION.md)       | [Migration Guide](./migrations/README.md) |
 - ✅ **Database-Driven Configuration** - Store and manage Modbus devices in PostgreSQL
 - ✅ **Dynamic Device Management** - Add/update/remove devices via REST API without restart
 - ✅ **Automatic Polling** - Configure registers to poll automatically from database
@@ -36,6 +22,7 @@
 - ✅ **REST API** - Complete API for device interaction and management
 - ✅ **Async Support** - Full async/await with asyncpg for optimal performance
 - ✅ **Caching** - Register value caching for improved performance
+- ✅ **MQTT Integration** - Real-time data publishing to MQTT brokers
 - ✅ **Soft Delete** - Deactivate devices/polling without losing configuration
 
 ---
@@ -124,11 +111,49 @@ uvicorn main:app --reload
 | `/api/admin/polling/{id}` | PUT    | Update target         | [→](./docs/POLLING_CONFIGURATION.md#update-polling-target)             |
 | `/api/admin/polling/{id}` | DELETE | Soft delete           | [→](./docs/POLLING_CONFIGURATION.md#delete-polling-target-soft-delete) |
 
+### Admin - Cache Management
+
+| Endpoint                     | Method | Description            | Docs |
+| ---------------------------- | ------ | ---------------------- | ---- |
+| `/api/admin/cache`           | GET    | Inspect all cache      | -    |
+| `/api/admin/cache/stats`     | GET    | Cache statistics       | -    |
+| `/api/admin/cache/device/{id}` | GET  | Inspect device cache   | -    |
+| `/api/admin/cache`           | DELETE | Clear all cache        | -    |
+
 **[Complete API Documentation →](./docs/DEVICE_MANAGEMENT.md)**
 
 ---
 
 ## 📦 Configuration
+
+### Environment Variables
+
+This application uses a `.env` file for configuration. Copy `.env.example` to `.env` to start.
+
+**Database Configuration**
+
+| Variable | Description | Default |
+| :--- | :--- | :--- |
+| `DATABASE_URL` | PostgreSQL connection string. | `postgresql+asyncpg://postgres:postgres@localhost:5432/modbus_db` |
+| `DATABASE_ECHO` | If `true`, logs SQL queries. | `false` |
+
+**MQTT Configuration (Optional)**
+
+| Variable | Description | Default |
+| :--- | :--- | :--- |
+| `MQTT_BROKER_HOST` | Broker hostname/IP. Set to enable MQTT. | `None` |
+| `MQTT_BROKER_PORT` | Broker port number. | `1883` |
+| `MQTT_USERNAME` | MQTT Username. | `None` |
+| `MQTT_PASSWORD` | MQTT Password. | `None` |
+| `MQTT_TOPIC_PREFIX` | Prefix for published topics. | `modbus/data` |
+
+**Application Settings**
+
+| Variable | Description | Default |
+| :--- | :--- | :--- |
+| `APP_NAME` | Application name. | `Modbus Middleware` |
+| `APP_VERSION` | Application version. | `0.1.0` |
+| `POLL_INTERVAL_SECONDS` | Polling interval for background service. | `5` |
 
 ### Device Parameters
 
@@ -144,14 +169,6 @@ uvicorn main:app --reload
 | `retry_delay` | float   | ❌       | Delay between retries (seconds) | 0.1     |
 
 **[Full Configuration Guide →](./docs/DEVICE_MANAGEMENT.md#device-parameters)**
-
-### Environment Variables
-
-```env
-# .env file
-DATABASE_URL=postgresql+asyncpg://user:password@localhost:5432/modbus_db
-DATABASE_ECHO=false
-```
 
 ---
 
@@ -221,42 +238,52 @@ curl "http://localhost:8000/api/devices/office-eng/registers?address=0&count=10&
 
 ```
 modbus_middleware/
-├── README.md                          # This file
+├── .env.example                       # Environment variables template
 ├── DATABASE_SETUP.md                  # Setup guide & docs index
+├── main.py                            # Application entry point
 ├── migrate.py                         # Main migration runner
+├── requirements.txt                   # Python dependencies
 │
 ├── app/
+│   ├── __init__.py
+│   ├── dependencies.py               # Dependency injection
+│   ├── schemas.py                    # Pydantic schemas
 │   ├── api/
-│   │   ├── routes.py                 # Device API endpoints
+│   │   ├── __init__.py
 │   │   ├── admin_routes.py           # Admin device management
-│   │   └── polling_routes.py         # Admin polling management
+│   │   ├── cache_routes.py           # Admin cache inspection
+│   │   ├── polling_routes.py         # Admin polling management
+│   │   └── routes.py                 # Device API endpoints
 │   ├── config/
+│   │   ├── __init__.py
 │   │   └── devices.py                # Device configuration loader
 │   ├── core/
+│   │   ├── __init__.py
+│   │   ├── cache.py                  # Register caching
 │   │   ├── config.py                 # Application settings
 │   │   ├── modbus_client.py          # Modbus client manager
-│   │   └── cache.py                  # Register caching
+│   │   └── mqtt_client.py            # MQTT client manager
 │   ├── database/
-│   │   ├── models.py                 # SQLModel database models
+│   │   ├── __init__.py
 │   │   ├── connection.py             # Database connection
-│   │   └── crud.py                   # CRUD operations
+│   │   ├── crud.py                   # CRUD operations
+│   │   └── models.py                 # SQLModel database models
 │   └── services/
+│       ├── __init__.py
 │       └── poller.py                 # Background polling service
 │
-├── migrations/                        # Database migrations
-│   ├── README.md                     # Migration guide
-│   ├── base.py                       # Migration utilities
-│   ├── 001_initial_setup.py         # Create devices table
-│   └── 002_add_polling_targets.py   # Create polling table
-│
 ├── docs/                              # Documentation
-│   ├── DEVICE_MANAGEMENT.md          # Device API guide (15.7 KB)
-│   ├── POLLING_CONFIGURATION.md      # Polling guide (8.0 KB)
-│   └── POLLING_QUICK_START.md        # Quick polling guide (3.8 KB)
+│   ├── CACHE_INSPECTION_GUIDE.md     # Cache debugging guide
+│   ├── DEVICE_MANAGEMENT.md          # Device API guide
+│   ├── MQTT_INTEGRATION.md           # MQTT integration guide
+│   ├── POLLING_CONFIGURATION.md      # Polling guide
+│   └── POLLING_QUICK_START.md        # Quick polling guide
 │
-├── main.py                            # Application entry point
-├── requirements.txt                   # Python dependencies
-└── .env.example                       # Environment variables template
+└── migrations/                        # Database migrations
+    ├── README.md                     # Migration guide
+    ├── base.py                       # Migration utilities
+    ├── 001_initial_setup.py          # Migration: Create devices table
+    └── 002_add_polling_targets.py    # Migration: Create polling table
 ```
 
 ---
@@ -445,6 +472,7 @@ curl -X POST http://localhost:8000/api/admin/devices/reload
 - **[📖 Complete Documentation Index](./DATABASE_SETUP.md)**
 - **[🔧 Device API Reference](./docs/DEVICE_MANAGEMENT.md)**
 - **[📊 Polling Configuration](./docs/POLLING_CONFIGURATION.md)**
+- **[📡 MQTT Integration](./docs/MQTT_INTEGRATION.md)**
 - **[🗃️ Database Migrations](./migrations/README.md)**
 - **[💻 Interactive API Docs](http://localhost:8000/docs)** (when running)
 

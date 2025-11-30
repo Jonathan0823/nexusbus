@@ -139,6 +139,7 @@ DEBUG:app.services.poller:Polled formation input addr=0 count=5 → [50, 60, 70,
 
 ## Next Steps
 
+- **Enable MQTT**: [Configure MQTT publishing](./MQTT_INTEGRATION.md) for real-time data streaming
 - **Build Admin UI**: Use the API to create a web interface for managing polling targets
 - **Add Webhooks**: Trigger actions when polling detects changes
 - **Export Data**: Create endpoints to export polling data history

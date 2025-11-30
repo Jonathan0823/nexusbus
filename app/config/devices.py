@@ -7,6 +7,7 @@ from typing import List
 from pymodbus.framer import FramerType
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.modbus_client import DeviceConfig
 
 # Hard-coded demo devices as fallback
@@ -36,7 +37,7 @@ DEVICE_CONFIGS: List[DeviceConfig] = [
 # Keep empty to disable polling.
 DEFAULT_POLL_TARGETS = []
 
-POLL_INTERVAL_SECONDS = 5
+POLL_INTERVAL_SECONDS = settings.POLL_INTERVAL_SECONDS
 
 # API request timeout in seconds
 # If a Modbus request takes longer than this, it will timeout and reset the connection

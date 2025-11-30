@@ -271,6 +271,15 @@ DEBUG:app.services.poller:Polling 2 target(s)...
 DEBUG:app.services.poller:Polled office-eng holding addr=0 count=10 → [100, 200, ...]
 ```
 
+## MQTT Integration
+
+If MQTT is configured, the polling service will automatically publish the polled data to the MQTT broker after every successful read.
+
+- **Topic**: `modbus/data/{device_id}/{register_type}/{address}`
+- **Payload**: JSON object with values and timestamp.
+
+[See MQTT Integration Guide](./MQTT_INTEGRATION.md) for full details.
+
 ## Troubleshooting
 
 ### No targets are being polled
