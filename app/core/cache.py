@@ -73,8 +73,11 @@ class RegisterCache:
             timestamp=datetime.now(timezone.utc),
             ttl_seconds=ttl_seconds or self._default_ttl,
         )
+        from app.core.metrics import metrics_collector
+        
         async with self._lock:
             self._store[self._key(device_id, register_type, address, count)] = entry
+            metrics_collector.cache.record_set()
 
     async def get(
         self,
@@ -88,13 +91,23 @@ class RegisterCache:
         Returns:
             CachedEntry if found and not expired, None otherwise
         """
+        from app.core.metrics import metrics_collector
+        
         key = self._key(device_id, register_type, address, count)
         async with self._lock:
             entry = self._store.get(key)
             if entry and entry.is_expired():
                 # Auto-cleanup expired entry
                 del self._store[key]
+                metrics_collector.cache.record_eviction()
+                metrics_collector.cache.record_miss()
                 return None
+            
+            if entry:
+                metrics_collector.cache.record_hit()
+            else:
+                metrics_collector.cache.record_miss()
+            
             return entry
 
     async def clear(self) -> None:

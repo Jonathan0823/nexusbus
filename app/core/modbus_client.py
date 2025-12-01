@@ -360,21 +360,36 @@ class ModbusClientManager:
     async def read_registers(
         self, device_id: str, register_type: RegisterType, address: int, count: int, retries: Optional[int] = None, timeout: Optional[float] = None
     ) -> List[int]:
-        response = await self._run_read(device_id, register_type, address, count, retries=retries, timeout=timeout)
+        import time
+        from app.core.metrics import metrics_collector
         
-        if response is None:
-            raise ModbusClientError(f"No response from device '{device_id}'")
+        start_time = time.time()
+        success = False
+        
+        try:
+            response = await self._run_read(device_id, register_type, address, count, retries=retries, timeout=timeout)
             
-        if getattr(response, 'isError', lambda: False)():
-            raise ModbusClientError(str(response))
+            if response is None:
+                raise ModbusClientError(f"No response from device '{device_id}'")
+                
+            if getattr(response, 'isError', lambda: False)():
+                raise ModbusClientError(str(response))
+                
+            if hasattr(response, "registers"):
+                registers = list(response.registers)
+                result = registers[:count]
+            elif hasattr(response, "bits"):
+                bits = [int(bit) for bit in response.bits]
+                result = bits[:count]
+            else:
+                raise ModbusClientError("Unexpected Modbus response format")
             
-        if hasattr(response, "registers"):
-            registers = list(response.registers)
-            return registers[:count]
-        if hasattr(response, "bits"):
-            bits = [int(bit) for bit in response.bits]
-            return bits[:count]
-        raise ModbusClientError("Unexpected Modbus response format")
+            success = True
+            return result
+        finally:
+            # Record metrics
+            latency_ms = (time.time() - start_time) * 1000
+            metrics_collector.modbus.record_request(register_type, success, latency_ms)
 
     async def write_register(
         self, device_id: str, register_type: RegisterType, address: int, value: int

@@ -237,6 +237,14 @@ async def poll_registers(
                     failure_count += 1
 
             cycle_duration = time.time() - cycle_start_time
+            cycle_duration_ms = cycle_duration * 1000
+            
+            # Record metrics
+            from app.core.metrics import metrics_collector
+            metrics_collector.polling.record_cycle(
+                success_count, failure_count, cycle_duration_ms
+            )
+            
             logger.debug(
                 f"Polling cycle completed: {success_count} success, {failure_count} failures, "
                 f"duration: {cycle_duration:.2f}s"
