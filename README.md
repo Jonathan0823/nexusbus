@@ -13,21 +13,26 @@
 
 ## 📚 Documentation Navigation
 
-| **Quick Start**                       | **Device Management**                           | **Polling**                                       | **MQTT**                                 | **Migrations**                            |
-| ------------------------------------- | ----------------------------------------------- | ------------------------------------------------- | ---------------------------------------- | ----------------------------------------- |
-| [Database Setup](./DATABASE_SETUP.md) | [Device API Guide](./docs/DEVICE_MANAGEMENT.md) | [Polling Config](./docs/POLLING_CONFIGURATION.md) | [MQTT Guide](./docs/MQTT_INTEGRATION.md) | [Migration Guide](./migrations/README.md) |
+| **Quick Start**                       | **Device Management**                           | **Polling**                                       | **MQTT**                                 | **Monitoring**                                    | **Migrations**                            |
+| ------------------------------------- | ----------------------------------------------- | ------------------------------------------------- | ---------------------------------------- | ------------------------------------------------- | ----------------------------------------- |
+| [Database Setup](./DATABASE_SETUP.md) | [Device API Guide](./docs/DEVICE_MANAGEMENT.md) | [Polling Config](./docs/POLLING_CONFIGURATION.md) | [MQTT Guide](./docs/MQTT_INTEGRATION.md) | [Metrics & Monitoring](./docs/METRICS_AND_MONITORING.md) | [Migration Guide](./migrations/README.md) |
 
 - ✅ **Database-Driven Configuration** - Store and manage Modbus devices in PostgreSQL
 - ✅ **Dynamic Device Management** - Add/update/remove devices via REST API without restart
 - ✅ **Automatic Polling** - Configure registers to poll automatically from database
+- ✅ **Parallel Polling** - Poll multiple devices concurrently for improved performance
 - ✅ **Hot-Reload** - Apply configuration changes without server restart
 - ✅ **Connection Pooling** - Efficiently manage Modbus TCP connections & shared gateways
 - ✅ **Request Timeout Handling** - Automatic timeout and connection reset
 - ✅ **REST API** - Complete API for device interaction and management
 - ✅ **Async Support** - Full async/await with asyncpg for optimal performance
-- ✅ **Caching** - Register value caching for improved performance
+- ✅ **Smart Caching** - Register value caching with TTL and automatic eviction
 - ✅ **MQTT Integration** - Real-time data publishing to MQTT brokers
 - ✅ **Soft Delete** - Deactivate devices/polling without losing configuration
+- ✅ **Structured Logging** - JSON-formatted logs for easy parsing and monitoring
+- ✅ **Metrics Collection** - Built-in metrics for performance monitoring
+- ✅ **Enhanced Health Checks** - Comprehensive health monitoring for all services
+- ✅ **Input Validation** - Robust validation for all API inputs
 
 ---
 
@@ -82,6 +87,7 @@ uvicorn main:app --reload
 - API: http://localhost:8000
 - Interactive Docs: http://localhost:8000/docs
 - Health Check: http://localhost:8000/health
+- Metrics: http://localhost:8000/api/metrics
 
 ### 4. Run with Docker (Recommended) 🐳
 
@@ -151,6 +157,14 @@ docker-compose down
 | `/api/admin/cache/device/{id}` | GET    | Inspect device cache | -    |
 | `/api/admin/cache`             | DELETE | Clear all cache      | -    |
 
+### Metrics & Monitoring
+
+| Endpoint           | Method | Description              | Docs |
+| ------------------ | ------ | ------------------------ | ---- |
+| `/api/metrics`     | GET    | Get all application metrics | -    |
+| `/api/metrics/reset` | POST | Reset metrics (testing)  | -    |
+| `/health`          | GET    | Comprehensive health check | -    |
+
 **[Complete API Documentation →](./docs/DEVICE_MANAGEMENT.md)**
 
 ---
@@ -185,6 +199,15 @@ This application uses a `.env` file for configuration. Copy `.env.example` to `.
 | `APP_NAME`              | Application name.                        | `NexusBus` |
 | `APP_VERSION`           | Application version.                     | `0.1.0`    |
 | `POLL_INTERVAL_SECONDS` | Polling interval for background service. | `5`        |
+| `CACHE_TTL_SECONDS`     | Cache entry time-to-live in seconds.     | `300`      |
+
+**Logging Configuration**
+
+| Variable            | Description                                    | Default |
+| :------------------ | :--------------------------------------------- | :------ |
+| `LOG_LEVEL`         | Logging level (DEBUG, INFO, WARNING, ERROR).   | `INFO`  |
+| `LOG_JSON`          | Output logs in JSON format (for production).   | `false` |
+| `LOG_INCLUDE_CALLER`| Include caller information in logs.            | `true`  |
 
 ### Device Parameters
 
@@ -196,8 +219,15 @@ This application uses a `.env` file for configuration. Copy `.env.example` to `.
 | `slave_id`    | integer | ✅       | Modbus slave ID (1-247)         | -       |
 | `timeout`     | integer | ❌       | Connection timeout (seconds)    | 10      |
 | `framer`      | string  | ❌       | RTU, SOCKET, or ASCII           | RTU     |
-| `max_retries` | integer | ❌       | Max retry attempts              | 5       |
+| `max_retries` | integer | ❌       | Max retry attempts (0-10)       | 5       |
 | `retry_delay` | float   | ❌       | Delay between retries (seconds) | 0.1     |
+
+**Note:** All inputs are validated automatically:
+- `slave_id`: Must be between 1-247 (Modbus specification)
+- `port`: Must be between 1-65535
+- `framer`: Must be one of RTU, SOCKET, or ASCII
+- `timeout`: Must be between 1-300 seconds
+- `max_retries`: Must be between 0-10
 
 **[Full Configuration Guide →](./docs/DEVICE_MANAGEMENT.md#device-parameters)**
 
@@ -283,6 +313,7 @@ modbus_middleware/
 │   │   ├── __init__.py
 │   │   ├── admin_routes.py           # Admin device management
 │   │   ├── cache_routes.py           # Admin cache inspection
+│   │   ├── metrics_routes.py         # Metrics endpoint
 │   │   ├── polling_routes.py         # Admin polling management
 │   │   └── routes.py                 # Device API endpoints
 │   ├── config/
@@ -290,8 +321,10 @@ modbus_middleware/
 │   │   └── devices.py                # Device configuration loader
 │   ├── core/
 │   │   ├── __init__.py
-│   │   ├── cache.py                  # Register caching
+│   │   ├── cache.py                  # Register caching with TTL
 │   │   ├── config.py                 # Application settings
+│   │   ├── logging_config.py         # Structured logging configuration
+│   │   ├── metrics.py                # Metrics collection
 │   │   ├── modbus_client.py          # Modbus client manager
 │   │   └── mqtt_client.py            # MQTT client manager
 │   ├── database/
@@ -306,6 +339,7 @@ modbus_middleware/
 ├── docs/                              # Documentation
 │   ├── CACHE_INSPECTION_GUIDE.md     # Cache debugging guide
 │   ├── DEVICE_MANAGEMENT.md          # Device API guide
+│   ├── METRICS_AND_MONITORING.md     # Metrics and monitoring guide
 │   ├── MQTT_INTEGRATION.md           # MQTT integration guide
 │   ├── POLLING_CONFIGURATION.md      # Polling guide
 │   └── POLLING_QUICK_START.md        # Quick polling guide
@@ -444,17 +478,20 @@ Polling configuration reloads automatically every polling cycle. **No manual rel
 - **Device Management**: [DEVICE_MANAGEMENT.md](./docs/DEVICE_MANAGEMENT.md)
 - **Polling Setup**: [POLLING_CONFIGURATION.md](./docs/POLLING_CONFIGURATION.md)
 - **Quick Testing**: [POLLING_QUICK_START.md](./docs/POLLING_QUICK_START.md)
+- **Metrics & Monitoring**: [METRICS_AND_MONITORING.md](./docs/METRICS_AND_MONITORING.md)
 - **Database Migrations**: [migrations/README.md](./migrations/README.md)
 
 ### By Task
 
-| I want to...        | Read this                                                              |
-| ------------------- | ---------------------------------------------------------------------- |
-| Set up the database | [DATABASE_SETUP.md](./DATABASE_SETUP.md)                               |
-| Add a new device    | [Device Creation Guide](./docs/DEVICE_MANAGEMENT.md#create-new-device) |
-| Configure polling   | [Polling Configuration](./docs/POLLING_CONFIGURATION.md)               |
-| Create a migration  | [Migration Guide](./migrations/README.md#creating-new-migrations)      |
-| Troubleshoot issues | [Troubleshooting](#troubleshooting)                                    |
+| I want to...           | Read this                                                              |
+| ---------------------- | ---------------------------------------------------------------------- |
+| Set up the database    | [DATABASE_SETUP.md](./DATABASE_SETUP.md)                               |
+| Add a new device       | [Device Creation Guide](./docs/DEVICE_MANAGEMENT.md#create-new-device) |
+| Configure polling      | [Polling Configuration](./docs/POLLING_CONFIGURATION.md)               |
+| Monitor performance    | [Metrics & Monitoring](./docs/METRICS_AND_MONITORING.md)               |
+| Set up logging         | [Metrics & Monitoring](./docs/METRICS_AND_MONITORING.md#structured-logging) |
+| Create a migration     | [Migration Guide](./migrations/README.md#creating-new-migrations)      |
+| Troubleshoot issues    | [Troubleshooting](#troubleshooting)                                    |
 
 ---
 
@@ -504,6 +541,7 @@ Apache License 2.0 (Copyright (c) 2025 Eguin Jonathan)
 - **[🔧 Device API Reference](./docs/DEVICE_MANAGEMENT.md)**
 - **[📊 Polling Configuration](./docs/POLLING_CONFIGURATION.md)**
 - **[📡 MQTT Integration](./docs/MQTT_INTEGRATION.md)**
+- **[📈 Metrics & Monitoring](./docs/METRICS_AND_MONITORING.md)**
 - **[🗃️ Database Migrations](./migrations/README.md)**
 - **[💻 Interactive API Docs](http://localhost:8000/docs)** (when running)
 
