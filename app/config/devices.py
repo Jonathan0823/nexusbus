@@ -8,7 +8,10 @@ from pymodbus.framer import FramerType
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.logging_config import get_logger
 from app.core.modbus_client import DeviceConfig
+
+logger = get_logger(__name__)
 
 # Hard-coded demo devices as fallback
 DEVICE_CONFIGS: List[DeviceConfig] = []
@@ -58,10 +61,12 @@ async def load_device_configs(
         ]
     except Exception as e:
         # If database error, fallback to hardcoded configs
-        import logging
-
-        logger = logging.getLogger(__name__)
         logger.warning(
-            f"Failed to load devices from database: {e}. Using hardcoded configs."
+            "device_load_failed",
+            error=str(e),
+            error_type=type(e).__name__,
+            fallback="hardcoded_configs",
+            message="Failed to load devices from database, using hardcoded configs",
+            exc_info=True,
         )
         return DEVICE_CONFIGS

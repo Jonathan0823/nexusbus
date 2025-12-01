@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import logging
 import uuid
 from typing import Any, Optional
 
@@ -15,8 +14,9 @@ except ImportError:
     HAS_MQTT = False
 
 from app.core.config import settings
+from app.core.logging_config import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class MQTTClientManager:
@@ -27,11 +27,18 @@ class MQTTClientManager:
         self._enabled = False
 
         if not HAS_MQTT:
-            logger.warning("gmqtt library not found. MQTT support disabled.")
+            logger.warning(
+                "mqtt_library_not_found",
+                message="gmqtt library not found. MQTT support disabled.",
+            )
             return
 
         if not settings.MQTT_BROKER_HOST:
-            logger.info("MQTT_BROKER_HOST not set. MQTT support disabled.")
+            logger.info(
+                "mqtt_disabled",
+                reason="MQTT_BROKER_HOST not set",
+                message="MQTT support disabled",
+            )
             return
 
         self._enabled = True
@@ -50,7 +57,12 @@ class MQTTClientManager:
             self._client.set_auth_credentials(self._username, self._password)
 
         logger.info(
-            f"MQTT configured: {self._host}:{self._port} (Client ID: {client_id})"
+            "mqtt_configured",
+            host=self._host,
+            port=self._port,
+            client_id=client_id,
+            topic_prefix=self._topic_prefix,
+            message="MQTT client configured",
         )
 
     async def start(self) -> None:
@@ -60,9 +72,22 @@ class MQTTClientManager:
 
         try:
             await self._client.connect(self._host, self._port)
-            logger.info("Connected to MQTT Broker")
+            logger.info(
+                "mqtt_connected",
+                host=self._host,
+                port=self._port,
+                message="Connected to MQTT Broker",
+            )
         except Exception as e:
-            logger.error(f"Failed to connect to MQTT Broker: {e}")
+            logger.error(
+                "mqtt_connect_failed",
+                host=self._host,
+                port=self._port,
+                error=str(e),
+                error_type=type(e).__name__,
+                message="Failed to connect to MQTT Broker",
+                exc_info=True,
+            )
             # Don't raise, just log. App continues without MQTT.
 
     async def stop(self) -> None:
@@ -70,9 +95,22 @@ class MQTTClientManager:
         if self._client and self._client.is_connected:
             try:
                 await self._client.disconnect()
-                logger.info("Disconnected from MQTT Broker")
+                logger.info(
+                    "mqtt_disconnected",
+                    host=self._host,
+                    port=self._port,
+                    message="Disconnected from MQTT Broker",
+                )
             except Exception as e:
-                logger.error(f"Error disconnecting from MQTT: {e}")
+                logger.error(
+                    "mqtt_disconnect_error",
+                    host=self._host,
+                    port=self._port,
+                    error=str(e),
+                    error_type=type(e).__name__,
+                    message="Error disconnecting from MQTT",
+                    exc_info=True,
+                )
 
     async def publish(self, topic_suffix: str, payload: Any) -> None:
         """Publish data to MQTT.
@@ -97,10 +135,24 @@ class MQTTClientManager:
             message = json.dumps(payload, default=str)
 
             self._client.publish(topic, message, qos=0)
-            logger.debug(f"Published to {topic}")
+            logger.debug(
+                "mqtt_published",
+                topic=topic,
+                topic_suffix=topic_suffix,
+                payload_size=len(message),
+                message="Published to MQTT",
+            )
 
         except Exception as e:
-            logger.error(f"Failed to publish to {topic}: {e}")
+            logger.error(
+                "mqtt_publish_error",
+                topic=topic,
+                topic_suffix=topic_suffix,
+                error=str(e),
+                error_type=type(e).__name__,
+                message="Failed to publish to MQTT",
+                exc_info=True,
+            )
 
 
 mqtt_manager = MQTTClientManager()

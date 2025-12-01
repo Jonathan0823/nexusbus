@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 import time
 from dataclasses import dataclass
 from enum import Enum
@@ -14,7 +13,9 @@ from pymodbus.exceptions import ModbusException, ModbusIOException
 from pymodbus.framer import FramerType
 from pymodbus.pdu import ExceptionResponse
 
-logger = logging.getLogger(__name__)
+from app.core.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 class RegisterType(str, Enum):
@@ -83,14 +84,22 @@ class ModbusGateway:
         """Check if response is valid (not error and correct slave_id)."""
         # Check for None response (timeout or connection issue)
         if response is None:
-            logger.warning(f"{operation}: No response (None) from slave_id={slave_id}")
+            logger.warning(
+                "modbus_no_response",
+                operation=operation,
+                slave_id=slave_id,
+                message="No response (None) received",
+            )
             return False
         
         # Check if response is ExceptionResponse (includes CRC errors)
         if isinstance(response, ExceptionResponse):
             logger.warning(
-                f"{operation}: Exception response from slave_id={slave_id} "
-                f"(code={response.exception_code})"
+                "modbus_exception_response",
+                operation=operation,
+                slave_id=slave_id,
+                exception_code=response.exception_code,
+                message="Exception response received",
             )
             return False
         
@@ -99,14 +108,22 @@ class ModbusGateway:
         if getattr(response, 'isError', lambda: False)():
             error_msg = str(response)
             logger.warning(
-                f"{operation}: Error response from slave_id={slave_id}: {error_msg}"
+                "modbus_error_response",
+                operation=operation,
+                slave_id=slave_id,
+                error=error_msg,
+                message="Error response received",
             )
             return False
         
         # Additional check for slave_id if available
         if hasattr(response, 'slave_id') and response.slave_id != slave_id:
             logger.warning(
-                f"{operation}: request for slave_id={slave_id} but got slave_id={response.slave_id}. Retrying..."
+                "modbus_slave_id_mismatch",
+                operation=operation,
+                requested_slave_id=slave_id,
+                received_slave_id=response.slave_id,
+                message="Slave ID mismatch, will retry",
             )
             return False
         return True
@@ -204,13 +221,28 @@ class ModbusGateway:
                     op_name = f"read_{operation}_registers" if operation in ("holding", "input") else f"read_{operation}s"
                     if self._is_valid_response(response, op_name, slave_id):
                         if attempt > 0:
-                            logger.info(f"{op_name} succeeded after {attempt + 1} attempts for slave_id={slave_id}")
+                            logger.info(
+                                "modbus_read_success_after_retry",
+                                operation=op_name,
+                                slave_id=slave_id,
+                                attempts=attempt + 1,
+                                message="Read succeeded after retries",
+                            )
                         return response
                 except (ModbusException, ModbusIOException) as exc:
                     last_exception = exc
                     exc_type = type(exc).__name__
                     op_name = f"read_{operation}_registers" if operation in ("holding", "input") else f"read_{operation}s"
-                    logger.warning(f"{op_name} {exc_type} for slave_id={slave_id}: {exc}. Retrying...")
+                    logger.warning(
+                        "modbus_read_exception",
+                        operation=op_name,
+                        slave_id=slave_id,
+                        exception_type=exc_type,
+                        exception=str(exc),
+                        attempt=attempt + 1,
+                        max_attempts=num_attempts,
+                        message="Modbus exception, retrying",
+                    )
                     self.close()
                     if attempt < num_attempts - 1:
                         self.ensure_connection()
@@ -219,7 +251,17 @@ class ModbusGateway:
                 except Exception as exc:
                     last_exception = exc
                     op_name = f"read_{operation}_registers" if operation in ("holding", "input") else f"read_{operation}s"
-                    logger.error(f"{op_name} unexpected error for slave_id={slave_id}: {exc}. Retrying...")
+                    logger.error(
+                        "modbus_read_unexpected_error",
+                        operation=op_name,
+                        slave_id=slave_id,
+                        exception_type=type(exc).__name__,
+                        exception=str(exc),
+                        attempt=attempt + 1,
+                        max_attempts=num_attempts,
+                        message="Unexpected error, retrying",
+                        exc_info=True,
+                    )
                     self.close()
                     if attempt < num_attempts - 1:
                         self.ensure_connection()
@@ -228,12 +270,33 @@ class ModbusGateway:
                 
                 if attempt < num_attempts - 1:
                     op_name = f"read_{operation}_registers" if operation in ("holding", "input") else f"read_{operation}s"
-                    log_level = logger.info if operation in ("holding", "input") else logger.debug
-                    log_level(f"{op_name} retry {attempt + 1}/{num_attempts} for slave_id={slave_id}")
+                    if operation in ("holding", "input"):
+                        logger.info(
+                            "modbus_read_retry",
+                            operation=op_name,
+                            slave_id=slave_id,
+                            attempt=attempt + 1,
+                            max_attempts=num_attempts,
+                        )
+                    else:
+                        logger.debug(
+                            "modbus_read_retry",
+                            operation=op_name,
+                            slave_id=slave_id,
+                            attempt=attempt + 1,
+                            max_attempts=num_attempts,
+                        )
                     time.sleep(self.retry_delay)
             
             op_name = f"read_{operation}_registers" if operation in ("holding", "input") else f"read_{operation}s"
-            logger.error(f"{op_name} failed after {num_attempts} attempts for slave_id={slave_id}. Last exception: {last_exception}")
+            logger.error(
+                "modbus_read_failed",
+                operation=op_name,
+                slave_id=slave_id,
+                attempts=num_attempts,
+                last_exception=str(last_exception) if last_exception else None,
+                message="Read failed after all retries",
+            )
             return last_response
         finally:
             self._restore_timeout(orig_timeout)
@@ -266,13 +329,29 @@ class ModbusGateway:
                 if self._is_valid_response(response, "write_holding_register", slave_id):
                     return response
             except ModbusException as exc:
-                logger.warning(f"write_holding_register exception for slave_id={slave_id}: {exc}. Retrying...")
+                logger.warning(
+                    "modbus_write_exception",
+                    operation="write_holding_register",
+                    slave_id=slave_id,
+                    address=address,
+                    value=value,
+                    exception=str(exc),
+                    attempt=attempt + 1,
+                    max_attempts=self.max_retries,
+                    message="Write exception, retrying",
+                )
                 self.close()
                 if attempt < self.max_retries - 1:
                     self.ensure_connection()
 
             if attempt < self.max_retries - 1:
-                logger.debug(f"Retry {attempt + 1}/{self.max_retries} for slave_id={slave_id}")
+                logger.debug(
+                    "modbus_write_retry",
+                    operation="write_holding_register",
+                    slave_id=slave_id,
+                    attempt=attempt + 1,
+                    max_attempts=self.max_retries,
+                )
                 time.sleep(self.retry_delay)
         return last_response
 
@@ -435,7 +514,13 @@ class ModbusClientManager:
                 await asyncio.to_thread(gateway.close)
                 del self._gateways[key]
                 del self._locks[key]
-                logger.info(f"Reset gateway {config.host}:{config.port} for device '{device_id}'")
+                logger.info(
+                    "modbus_gateway_reset",
+                    device_id=device_id,
+                    host=config.host,
+                    port=config.port,
+                    message="Gateway reset",
+                )
 
     async def reload_configs(self, new_configs: Iterable[DeviceConfig]) -> None:
         """Reload device configurations dynamically.
@@ -455,7 +540,12 @@ class ModbusClientManager:
         
         # Update configs
         self._configs = {cfg.device_id: cfg for cfg in new_configs}
-        logger.info(f"Reloaded {len(new_configs)} device config(s)")
+        logger.info(
+            "modbus_configs_reloaded",
+            device_count=len(new_configs),
+            device_ids=[cfg.device_id for cfg in new_configs],
+            message="Device configurations reloaded",
+        )
 
     async def close_all(self) -> None:
         for gateway in self._gateways.values():

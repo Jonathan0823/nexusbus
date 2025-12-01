@@ -3,19 +3,19 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 import time
 from copy import deepcopy
 from typing import List, Dict, Any
 
 
 from app.core.cache import RegisterCache
+from app.core.logging_config import get_logger
 from app.core.modbus_client import ModbusClientManager, ModbusClientError, RegisterType
 from app.core.mqtt_client import MQTTClientManager
 from app.database import crud
 from app.database.connection import async_session_maker
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 async def _safe_mqtt_publish(
@@ -33,7 +33,12 @@ async def _safe_mqtt_publish(
         await mqtt_manager.publish(topic_suffix, payload)
     except Exception as e:
         logger.error(
-            f"MQTT publish failed for device '{device_id}' topic '{topic_suffix}': {e}",
+            "mqtt_publish_failed",
+            device_id=device_id,
+            topic=topic_suffix,
+            error=str(e),
+            error_type=type(e).__name__,
+            message="MQTT publish failed",
             exc_info=True,
         )
 
@@ -57,7 +62,13 @@ async def load_polling_targets_from_db() -> List[dict]:
                 for target in targets
             ]
     except Exception as e:
-        logger.error(f"Failed to load polling targets from database: {e}")
+        logger.error(
+            "polling_load_targets_failed",
+            error=str(e),
+            error_type=type(e).__name__,
+            message="Failed to load polling targets from database",
+            exc_info=True,
+        )
         return []
 
 
@@ -103,8 +114,13 @@ async def _poll_single_target(
         await cache.set(device_id, register_type, address, count, data)
 
         logger.info(
-            f"✓ Polled {device_id} {register_type.value} "
-            f"addr={address} count={count}"
+            "polling_target_success",
+            device_id=device_id,
+            register_type=register_type.value,
+            address=address,
+            count=count,
+            values_count=len(data),
+            message="Successfully polled target",
         )
 
         # Publish to MQTT (Fire & Forget with error handling)
@@ -129,7 +145,14 @@ async def _poll_single_target(
     except (KeyError, ValueError) as exc:
         # Invalid configuration - log once and skip
         error_msg = f"Invalid poll target config {target}: {exc}"
-        logger.error(error_msg)
+        logger.error(
+            "polling_target_invalid_config",
+            target=target,
+            error=str(exc),
+            error_type=type(exc).__name__,
+            device_id=target.get("device_id"),
+            message="Invalid polling target configuration",
+        )
         return (False, error_msg)
 
     except (ModbusClientError, ConnectionError) as exc:
@@ -139,13 +162,29 @@ async def _poll_single_target(
             f"{target.get('register_type')} addr={target.get('address')} - "
             f"will retry next cycle: {exc}"
         )
-        logger.warning(error_msg)
+        logger.warning(
+            "polling_target_failed",
+            device_id=target.get("device_id"),
+            register_type=target.get("register_type"),
+            address=target.get("address"),
+            error=str(exc),
+            error_type=type(exc).__name__,
+            message="Poll failed, will retry next cycle",
+        )
         return (False, error_msg)
 
     except Exception as exc:
         # Unexpected error - log and skip
         error_msg = f"Unexpected error polling {target.get('device_id')}: {exc}"
-        logger.error(error_msg, exc_info=True)
+        logger.error(
+            "polling_target_unexpected_error",
+            device_id=target.get("device_id"),
+            target=target,
+            error=str(exc),
+            error_type=type(exc).__name__,
+            message="Unexpected error polling target",
+            exc_info=True,
+        )
         return (False, error_msg)
 
 
@@ -180,7 +219,11 @@ async def poll_registers(
         fallback_targets = []
 
     logger.info(
-        f"Starting polling service (database mode: {use_database}, interval: {interval_seconds}s, parallel polling enabled)"
+        "polling_service_started",
+        database_mode=use_database,
+        interval_seconds=interval_seconds,
+        parallel_polling=True,
+        message="Polling service started",
     )
 
     try:
@@ -191,7 +234,11 @@ async def poll_registers(
             if use_database:
                 targets = await load_polling_targets_from_db()
                 if not targets and fallback_targets:
-                    logger.debug("No targets in database, using fallback targets")
+                    logger.debug(
+                        "polling_using_fallback",
+                        fallback_count=len(fallback_targets),
+                        message="No targets in database, using fallback targets",
+                    )
                     targets = deepcopy(
                         fallback_targets
                     )  # Deep copy to prevent mutation
@@ -199,11 +246,18 @@ async def poll_registers(
                 targets = deepcopy(fallback_targets)  # Deep copy to prevent mutation
 
             if not targets:
-                logger.debug("No polling targets configured, waiting...")
+                logger.debug(
+                    "polling_no_targets",
+                    message="No polling targets configured, waiting",
+                )
                 await asyncio.sleep(interval_seconds)
                 continue
 
-            logger.debug(f"Polling {len(targets)} target(s) in parallel...")
+            logger.debug(
+                "polling_cycle_start",
+                target_count=len(targets),
+                message="Starting polling cycle",
+            )
             cycle_start_time = time.time()
 
             # PARALLEL POLLING: Poll all targets concurrently
@@ -224,7 +278,13 @@ async def poll_registers(
             for i, result in enumerate(results):
                 if isinstance(result, Exception):
                     logger.error(
-                        f"Polling task {i} raised exception: {result}", exc_info=True
+                        "polling_task_exception",
+                        task_index=i,
+                        target=targets[i] if i < len(targets) else None,
+                        exception=str(result),
+                        exception_type=type(result).__name__,
+                        message="Polling task raised exception",
+                        exc_info=True,
                     )
                     failure_count += 1
                 elif isinstance(result, tuple):
@@ -246,12 +306,20 @@ async def poll_registers(
             )
             
             logger.debug(
-                f"Polling cycle completed: {success_count} success, {failure_count} failures, "
-                f"duration: {cycle_duration:.2f}s"
+                "polling_cycle_completed",
+                success_count=success_count,
+                failure_count=failure_count,
+                total_targets=len(targets),
+                duration_seconds=round(cycle_duration, 2),
+                duration_ms=round(cycle_duration_ms, 2),
+                message="Polling cycle completed",
             )
 
             await asyncio.sleep(interval_seconds)
 
     except asyncio.CancelledError:
-        logger.info("Polling task cancelled")
+        logger.info(
+            "polling_service_cancelled",
+            message="Polling service cancelled",
+        )
         raise

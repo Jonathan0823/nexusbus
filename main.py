@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 from contextlib import suppress, asynccontextmanager
 from datetime import datetime, timezone
 
@@ -20,14 +19,21 @@ from app.config.devices import (
     load_device_configs,
 )
 from app.core.cache import RegisterCache
+from app.core.config import settings
+from app.core.logging_config import get_logger, setup_logging
 from app.core.modbus_client import ModbusClientManager
 from app.services.poller import poll_registers
 from app.database.connection import create_db_and_tables, close_db, async_session_maker
 
 from app.core.mqtt_client import mqtt_manager
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# Setup structured logging
+setup_logging(
+    log_level=settings.LOG_LEVEL,
+    use_json=settings.LOG_JSON,
+    include_caller_info=settings.LOG_INCLUDE_CALLER,
+)
+logger = get_logger(__name__)
 
 
 @asynccontextmanager
@@ -37,20 +43,38 @@ async def lifespan(app: FastAPI):
     Handles startup and shutdown logic.
     """
     # --- STARTUP LOGIC ---
-    logger.info("Starting Modbus middleware service")
+    logger.info(
+        "app_starting",
+        app_name=settings.APP_NAME,
+        app_version=settings.APP_VERSION,
+        message="Starting Modbus middleware service",
+    )
 
     # Initialize database
     try:
-        logger.info("Creating database tables...")
+        logger.info("database_initializing", message="Creating database tables")
         await create_db_and_tables()
-        logger.info("Database initialized")
+        logger.info("database_initialized", message="Database initialized")
 
         # Load devices from database
         async with async_session_maker() as session:
             device_configs = await load_device_configs(session)
-        logger.info(f"Loaded {len(device_configs)} device(s) from database")
+        logger.info(
+            "devices_loaded",
+            device_count=len(device_configs),
+            device_ids=[cfg.device_id for cfg in device_configs],
+            source="database",
+            message="Loaded devices from database",
+        )
     except Exception as e:
-        logger.warning(f"Database initialization failed: {e}. Using hardcoded configs.")
+        logger.warning(
+            "database_init_failed",
+            error=str(e),
+            error_type=type(e).__name__,
+            fallback="hardcoded_configs",
+            message="Database initialization failed, using hardcoded configs",
+            exc_info=True,
+        )
         device_configs = DEVICE_CONFIGS
 
     # Initialize Modbus manager with loaded configs
@@ -62,7 +86,12 @@ async def lifespan(app: FastAPI):
     app.state.mqtt_manager = mqtt_manager
 
     # Start polling task (now loads targets from database automatically)
-    logger.info("Starting polling service (loading targets from database)")
+    logger.info(
+        "polling_service_starting",
+        interval_seconds=POLL_INTERVAL_SECONDS,
+        use_database=True,
+        message="Starting polling service",
+    )
     app.state.poller_task = asyncio.create_task(
         poll_registers(
             manager=app.state.modbus_manager,
@@ -78,27 +107,34 @@ async def lifespan(app: FastAPI):
     yield  # Application is running...
 
     # --- SHUTDOWN LOGIC ---
-    logger.info("Shutting down Modbus middleware service")
+    logger.info(
+        "app_shutting_down",
+        message="Shutting down Modbus middleware service",
+    )
     poller_task = getattr(app.state, "poller_task", None)
     if poller_task:
         poller_task.cancel()
         with suppress(asyncio.CancelledError):
             await poller_task
+        logger.debug("poller_task_cancelled", message="Polling task cancelled")
 
     manager: ModbusClientManager = app.state.modbus_manager
     await manager.close_all()
+    logger.debug("modbus_gateways_closed", message="All Modbus gateways closed")
 
     # Stop MQTT Client
     mqtt_manager_inst = getattr(app.state, "mqtt_manager", None)
     if mqtt_manager_inst:
         await mqtt_manager_inst.stop()
+        logger.debug("mqtt_stopped", message="MQTT client stopped")
 
     cache: RegisterCache = app.state.register_cache
     await cache.clear()
+    logger.debug("cache_cleared", message="Register cache cleared")
 
     # Close database connections
     await close_db()
-    logger.info("Database connections closed")
+    logger.info("database_closed", message="Database connections closed")
 
 
 app = FastAPI(title="Modbus Middleware", version="0.1.0", lifespan=lifespan)
