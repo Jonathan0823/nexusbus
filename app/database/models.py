@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 
+from pydantic import field_validator
 from sqlmodel import Field, SQLModel
 
 
@@ -30,26 +31,48 @@ class ModbusDevice(SQLModel, table=True):
 class ModbusDeviceCreate(SQLModel):
     """Schema for creating a new device."""
     
-    device_id: str
-    host: str
-    port: int
-    slave_id: int
-    timeout: int = 10
-    framer: str = "RTU"
-    max_retries: int = 5
-    retry_delay: float = 0.1
+    device_id: str = Field(..., max_length=50)
+    host: str = Field(..., max_length=100)
+    port: int = Field(..., ge=1, le=65535)
+    slave_id: int = Field(..., ge=1, le=247)  # Modbus slave ID range: 1-247
+    timeout: int = Field(default=10, ge=1, le=300)
+    framer: str = Field(default="RTU", max_length=20)
+    max_retries: int = Field(default=5, ge=0, le=10)
+    retry_delay: float = Field(default=0.1, ge=0.0, le=10.0)
+    
+    @field_validator('framer')
+    @classmethod
+    def validate_framer(cls, v: str) -> str:
+        """Validate framer value."""
+        valid_framers = ["RTU", "SOCKET", "ASCII"]
+        v_upper = v.upper()
+        if v_upper not in valid_framers:
+            raise ValueError(f"framer must be one of {valid_framers}, got '{v}'")
+        return v_upper
 
 
 class ModbusDeviceUpdate(SQLModel):
     """Schema for updating device configuration."""
     
-    host: Optional[str] = None
-    port: Optional[int] = None
-    slave_id: Optional[int] = None
-    timeout: Optional[int] = None
-    framer: Optional[str] = None
-    max_retries: Optional[int] = None
-    retry_delay: Optional[float] = None
+    host: Optional[str] = Field(None, max_length=100)
+    port: Optional[int] = Field(None, ge=1, le=65535)
+    slave_id: Optional[int] = Field(None, ge=1, le=247)
+    timeout: Optional[int] = Field(None, ge=1, le=300)
+    framer: Optional[str] = Field(None, max_length=20)
+    max_retries: Optional[int] = Field(None, ge=0, le=10)
+    retry_delay: Optional[float] = Field(None, ge=0.0, le=10.0)
+    
+    @field_validator('framer')
+    @classmethod
+    def validate_framer(cls, v: str | None) -> str | None:
+        """Validate framer value."""
+        if v is None:
+            return None
+        valid_framers = ["RTU", "SOCKET", "ASCII"]
+        v_upper = v.upper()
+        if v_upper not in valid_framers:
+            raise ValueError(f"framer must be one of {valid_framers}, got '{v}'")
+        return v_upper
 
 
 class ModbusDeviceResponse(SQLModel):
@@ -88,21 +111,43 @@ class PollingTarget(SQLModel, table=True):
 class PollingTargetCreate(SQLModel):
     """Schema for creating a new polling target."""
     
-    device_id: str
-    register_type: str  # holding, input, coil, discrete
-    address: int
-    count: int = 1
-    description: Optional[str] = None
+    device_id: str = Field(..., max_length=50)
+    register_type: str = Field(..., max_length=20)
+    address: int = Field(..., ge=0, le=65535)  # Modbus address range
+    count: int = Field(default=1, ge=1, le=125)  # Modbus max read count
+    description: Optional[str] = Field(None, max_length=200)
+    
+    @field_validator('register_type')
+    @classmethod
+    def validate_register_type(cls, v: str) -> str:
+        """Validate register type."""
+        valid_types = ["holding", "input", "coil", "discrete"]
+        v_lower = v.lower()
+        if v_lower not in valid_types:
+            raise ValueError(f"register_type must be one of {valid_types}, got '{v}'")
+        return v_lower
 
 
 class PollingTargetUpdate(SQLModel):
     """Schema for updating polling target configuration."""
     
-    device_id: Optional[str] = None
-    register_type: Optional[str] = None
-    address: Optional[int] = None
-    count: Optional[int] = None
-    description: Optional[str] = None
+    device_id: Optional[str] = Field(None, max_length=50)
+    register_type: Optional[str] = Field(None, max_length=20)
+    address: Optional[int] = Field(None, ge=0, le=65535)
+    count: Optional[int] = Field(None, ge=1, le=125)
+    description: Optional[str] = Field(None, max_length=200)
+    
+    @field_validator('register_type')
+    @classmethod
+    def validate_register_type(cls, v: str | None) -> str | None:
+        """Validate register type."""
+        if v is None:
+            return None
+        valid_types = ["holding", "input", "coil", "discrete"]
+        v_lower = v.lower()
+        if v_lower not in valid_types:
+            raise ValueError(f"register_type must be one of {valid_types}, got '{v}'")
+        return v_lower
 
 
 class PollingTargetResponse(SQLModel):
