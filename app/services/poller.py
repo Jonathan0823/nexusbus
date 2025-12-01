@@ -25,7 +25,7 @@ async def _safe_mqtt_publish(
     device_id: str,
 ) -> None:
     """Safely publish to MQTT with error handling.
-    
+
     This function handles MQTT publish errors gracefully without
     affecting the polling loop.
     """
@@ -34,7 +34,7 @@ async def _safe_mqtt_publish(
     except Exception as e:
         logger.error(
             f"MQTT publish failed for device '{device_id}' topic '{topic_suffix}': {e}",
-            exc_info=True
+            exc_info=True,
         )
 
 
@@ -68,13 +68,13 @@ async def _poll_single_target(
     mqtt_manager: MQTTClientManager | None = None,
 ) -> tuple[bool, str]:
     """Poll a single target and return (success, error_message).
-    
+
     Args:
         target: Polling target configuration dict
         manager: Modbus client manager
         cache: Register cache
         mqtt_manager: Optional MQTT manager
-        
+
     Returns:
         Tuple of (success: bool, error_message: str)
     """
@@ -107,22 +107,22 @@ async def _poll_single_target(
             f"addr={address} count={count}"
         )
 
-                    # Publish to MQTT (Fire & Forget with error handling)
-                    if mqtt_manager:
-                        # Topic: {prefix}/{device_id}/{register_type}/{address}
-                        topic_suffix = f"{device_id}/{register_type.value}/{address}"
-                        payload = {
-                            "device_id": device_id,
-                            "register_type": register_type.value,
-                            "address": address,
-                            "count": count,
-                            "values": data,
-                            "timestamp": time.time(),  # Standard Unix timestamp
-                        }
-                        # Run in background with error handling
-                        asyncio.create_task(
-                            _safe_mqtt_publish(mqtt_manager, topic_suffix, payload, device_id)
-                        )
+        # Publish to MQTT (Fire & Forget with error handling)
+        if mqtt_manager:
+            # Topic: {prefix}/{device_id}/{register_type}/{address}
+            topic_suffix = f"{device_id}/{register_type.value}/{address}"
+            payload = {
+                "device_id": device_id,
+                "register_type": register_type.value,
+                "address": address,
+                "count": count,
+                "values": data,
+                "timestamp": time.time(),  # Standard Unix timestamp
+            }
+            # Run in background with error handling
+            asyncio.create_task(
+                _safe_mqtt_publish(mqtt_manager, topic_suffix, payload, device_id)
+            )
 
         return (True, "")
 
@@ -192,7 +192,9 @@ async def poll_registers(
                 targets = await load_polling_targets_from_db()
                 if not targets and fallback_targets:
                     logger.debug("No targets in database, using fallback targets")
-                    targets = deepcopy(fallback_targets)  # Deep copy to prevent mutation
+                    targets = deepcopy(
+                        fallback_targets
+                    )  # Deep copy to prevent mutation
             else:
                 targets = deepcopy(fallback_targets)  # Deep copy to prevent mutation
 
@@ -210,18 +212,20 @@ async def poll_registers(
                 _poll_single_target(target, manager, cache, mqtt_manager)
                 for target in targets
             ]
-            
+
             # Wait for all polling tasks to complete (with return_exceptions=True
             # to prevent one failure from stopping others)
             results = await asyncio.gather(*polling_tasks, return_exceptions=True)
-            
+
             # Process results
             success_count = 0
             failure_count = 0
-            
+
             for i, result in enumerate(results):
                 if isinstance(result, Exception):
-                    logger.error(f"Polling task {i} raised exception: {result}", exc_info=True)
+                    logger.error(
+                        f"Polling task {i} raised exception: {result}", exc_info=True
+                    )
                     failure_count += 1
                 elif isinstance(result, tuple):
                     success, error_msg = result
@@ -231,7 +235,7 @@ async def poll_registers(
                         failure_count += 1
                 else:
                     failure_count += 1
-            
+
             cycle_duration = time.time() - cycle_start_time
             logger.debug(
                 f"Polling cycle completed: {success_count} success, {failure_count} failures, "
