@@ -194,22 +194,33 @@ async def healthcheck(
             http_status = status.HTTP_503_SERVICE_UNAVAILABLE
 
     # Check Modbus gateways
+    # Note: Gateways are lazy-initialized (only created on first request)
+    # So having no connected gateways is not necessarily an error
     try:
         manager = getattr(request.app.state, "modbus_manager", None)
         if manager:
             gateways = manager.get_gateways_status()
             connected_gateways = sum(1 for gw in gateways if gw["connected"])
+            total_devices = len(manager.list_devices())
             health["details"]["modbus"] = {
+                "initialized": True,
+                "total_devices": total_devices,
                 "total_gateways": len(gateways),
                 "connected_gateways": connected_gateways,
                 "gateways": gateways,
             }
-            if len(gateways) > 0 and connected_gateways == 0:
+            # Only mark as warning if we have devices but no gateways at all
+            # (gateways are lazy-initialized, so this is expected until first request)
+            if total_devices > 0 and len(gateways) == 0:
                 health["services"]["modbus"] = "warning"
-                if overall_status == "ok":
-                    overall_status = "degraded"
-                    http_status = status.HTTP_503_SERVICE_UNAVAILABLE
+                # Don't degrade overall status - gateways will connect on first use
+            elif len(gateways) > 0 and connected_gateways == 0:
+                health["services"]["modbus"] = "warning"
+                # Don't degrade overall status - connections may be idle
+            else:
+                health["services"]["modbus"] = "ok"
         else:
+            # Manager not initialized - this is an error
             health["details"]["modbus"] = {"initialized": False}
             health["services"]["modbus"] = "error"
             overall_status = "degraded"
