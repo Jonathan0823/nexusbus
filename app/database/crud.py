@@ -138,9 +138,11 @@ async def create_polling_target(session: AsyncSession, target: "PollingTarget") 
 async def update_polling_target(
     session: AsyncSession,
     target_id: int,
-    target_update: "ModbusDeviceUpdate",
+    target_update: "PollingTargetUpdate",
 ) -> Optional["PollingTarget"]:
     """Update an existing polling target configuration."""
+    from app.database.models import PollingTargetUpdate
+    
     target = await get_polling_target(session, target_id)
     if not target:
         return None
