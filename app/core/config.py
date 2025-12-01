@@ -24,6 +24,11 @@ class Settings(BaseSettings):
     APP_VERSION: str = "0.1.0"
     POLL_INTERVAL_SECONDS: int = 5
     CACHE_TTL_SECONDS: int = 300  # Cache entries expire after 5 minutes
+    
+    # Logging configuration
+    LOG_LEVEL: str = "INFO"
+    LOG_JSON: bool = False  # Set to True for JSON output (production)
+    LOG_INCLUDE_CALLER: bool = True
 
     # MQTT Configuration (Optional)
     MQTT_BROKER_HOST: str | None = None
