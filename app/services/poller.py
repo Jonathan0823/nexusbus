@@ -18,6 +18,26 @@ from app.database.connection import async_session_maker
 logger = logging.getLogger(__name__)
 
 
+async def _safe_mqtt_publish(
+    mqtt_manager: MQTTClientManager,
+    topic_suffix: str,
+    payload: Dict[str, Any],
+    device_id: str,
+) -> None:
+    """Safely publish to MQTT with error handling.
+    
+    This function handles MQTT publish errors gracefully without
+    affecting the polling loop.
+    """
+    try:
+        await mqtt_manager.publish(topic_suffix, payload)
+    except Exception as e:
+        logger.error(
+            f"MQTT publish failed for device '{device_id}' topic '{topic_suffix}': {e}",
+            exc_info=True
+        )
+
+
 async def load_polling_targets_from_db() -> List[dict]:
     """Load active polling targets from database."""
     try:
@@ -87,20 +107,22 @@ async def _poll_single_target(
             f"addr={address} count={count}"
         )
 
-        # Publish to MQTT (Fire & Forget)
-        if mqtt_manager:
-            # Topic: {prefix}/{device_id}/{register_type}/{address}
-            topic_suffix = f"{device_id}/{register_type.value}/{address}"
-            payload = {
-                "device_id": device_id,
-                "register_type": register_type.value,
-                "address": address,
-                "count": count,
-                "values": data,
-                "timestamp": time.time(),  # Standard Unix timestamp
-            }
-            # Run in background to not block polling loop
-            asyncio.create_task(mqtt_manager.publish(topic_suffix, payload))
+                    # Publish to MQTT (Fire & Forget with error handling)
+                    if mqtt_manager:
+                        # Topic: {prefix}/{device_id}/{register_type}/{address}
+                        topic_suffix = f"{device_id}/{register_type.value}/{address}"
+                        payload = {
+                            "device_id": device_id,
+                            "register_type": register_type.value,
+                            "address": address,
+                            "count": count,
+                            "values": data,
+                            "timestamp": time.time(),  # Standard Unix timestamp
+                        }
+                        # Run in background with error handling
+                        asyncio.create_task(
+                            _safe_mqtt_publish(mqtt_manager, topic_suffix, payload, device_id)
+                        )
 
         return (True, "")
 
