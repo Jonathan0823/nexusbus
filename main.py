@@ -12,6 +12,7 @@ from app.api.routes import router as devices_router
 from app.api.admin_routes import router as admin_router
 from app.api.polling_routes import router as polling_router
 from app.api.cache_routes import router as cache_router
+from app.api.metrics_routes import router as metrics_router
 from app.config.devices import (
     DEFAULT_POLL_TARGETS,
     DEVICE_CONFIGS,
@@ -112,6 +113,7 @@ app.include_router(devices_router, prefix="/api")
 app.include_router(admin_router, prefix="/api")
 app.include_router(polling_router, prefix="/api")
 app.include_router(cache_router, prefix="/api")
+app.include_router(metrics_router, prefix="/api")
 
 
 @app.get("/health", tags=["system"])
