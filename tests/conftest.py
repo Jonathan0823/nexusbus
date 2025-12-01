@@ -1,6 +1,6 @@
 import pytest
 from fastapi.testclient import TestClient
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, patch, AsyncMock
 from main import app
 
 
@@ -29,7 +29,15 @@ def client():
 @pytest.fixture(autouse=True)
 def mock_startup_shutdown():
     """Mock startup and shutdown events globally for all tests."""
-    with patch("main.create_db_and_tables", new_callable=MagicMock), patch(
-        "main.mqtt_manager.start", new_callable=MagicMock
-    ), patch("main.load_device_configs", return_value=[]):
+    
+    # Mock database session for health checks
+    mock_session = AsyncMock()
+    mock_session.__aenter__.return_value = mock_session
+    mock_session.__aexit__.return_value = None
+    mock_maker = MagicMock(return_value=mock_session)
+
+    with patch("main.create_db_and_tables", new_callable=MagicMock), \
+         patch("main.mqtt_manager.start", new_callable=MagicMock), \
+         patch("main.load_device_configs", return_value=[]), \
+         patch("app.database.connection.async_session_maker", new=mock_maker):
         yield
