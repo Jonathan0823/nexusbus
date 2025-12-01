@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 from contextlib import suppress, asynccontextmanager
 from datetime import datetime, timezone
@@ -120,13 +119,13 @@ async def healthcheck(
     request: Request,
 ) -> dict:
     """Comprehensive health check endpoint.
-    
+
     Checks:
     - Application status
     - Database connectivity
     - MQTT connection status
     - Modbus gateway status
-    
+
     Returns:
         - 200: All services healthy
         - 503: One or more services degraded
@@ -135,7 +134,7 @@ async def healthcheck(
     from app.database.connection import async_session_maker
     from fastapi import status
     from fastapi.responses import JSONResponse
-    
+
     health = {
         "status": "ok",
         "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -146,10 +145,10 @@ async def healthcheck(
         },
         "details": {},
     }
-    
+
     overall_status = "ok"
     http_status = status.HTTP_200_OK
-    
+
     # Check database
     try:
         async with async_session_maker() as session:
@@ -157,13 +156,10 @@ async def healthcheck(
         health["details"]["database"] = {"connected": True}
     except Exception as e:
         health["services"]["database"] = "error"
-        health["details"]["database"] = {
-            "connected": False,
-            "error": str(e)
-        }
+        health["details"]["database"] = {"connected": False, "error": str(e)}
         overall_status = "degraded"
         http_status = status.HTTP_503_SERVICE_UNAVAILABLE
-    
+
     # Check MQTT
     try:
         mqtt_mgr = getattr(request.app.state, "mqtt_manager", None)
@@ -196,7 +192,7 @@ async def healthcheck(
         overall_status = "degraded"
         if http_status == status.HTTP_200_OK:
             http_status = status.HTTP_503_SERVICE_UNAVAILABLE
-    
+
     # Check Modbus gateways
     try:
         manager = getattr(request.app.state, "modbus_manager", None)
@@ -225,7 +221,8 @@ async def healthcheck(
         overall_status = "degraded"
         if http_status == status.HTTP_200_OK:
             http_status = status.HTTP_503_SERVICE_UNAVAILABLE
-    
+
     health["status"] = overall_status
-    
+
     return JSONResponse(content=health, status_code=http_status)
+
