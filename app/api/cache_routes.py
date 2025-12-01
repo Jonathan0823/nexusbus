@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import List, Dict, Any
 
 from fastapi import APIRouter, Depends
@@ -35,9 +36,7 @@ async def inspect_cache(
                 "values": entry.data,
                 "cached_at": entry.timestamp.isoformat(),
                 "age_seconds": (
-                    # Calculate age
-                    # Using datetime.now(timezone.utc) - entry.timestamp
-                    (entry.timestamp.now(entry.timestamp.tzinfo) - entry.timestamp).total_seconds()
+                    (datetime.now(timezone.utc) - entry.timestamp).total_seconds()
                 ),
             })
     
