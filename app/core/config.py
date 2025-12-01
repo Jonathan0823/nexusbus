@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     APP_NAME: str = "Modbus Middleware"
     APP_VERSION: str = "0.1.0"
     POLL_INTERVAL_SECONDS: int = 5
+    CACHE_TTL_SECONDS: int = 300  # Cache entries expire after 5 minutes
 
     # MQTT Configuration (Optional)
     MQTT_BROKER_HOST: str | None = None
