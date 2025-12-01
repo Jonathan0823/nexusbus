@@ -33,10 +33,14 @@ async def get_device(session: AsyncSession, device_id: str) -> Optional[ModbusDe
 
 async def create_device(session: AsyncSession, device: ModbusDevice) -> ModbusDevice:
     """Create a new Modbus device."""
-    session.add(device)
-    await session.commit()
-    await session.refresh(device)
-    return device
+    try:
+        session.add(device)
+        await session.commit()
+        await session.refresh(device)
+        return device
+    except Exception:
+        await session.rollback()
+        raise
 
 
 async def update_device(
@@ -45,43 +49,55 @@ async def update_device(
     device_update: ModbusDeviceUpdate,
 ) -> Optional[ModbusDevice]:
     """Update an existing device configuration."""
-    device = await get_device(session, device_id)
-    if not device:
-        return None
+    try:
+        device = await get_device(session, device_id)
+        if not device:
+            return None
 
-    # Update fields
-    update_data = device_update.model_dump(exclude_unset=True)
-    for key, value in update_data.items():
-        setattr(device, key, value)
+        # Update fields
+        update_data = device_update.model_dump(exclude_unset=True)
+        for key, value in update_data.items():
+            setattr(device, key, value)
 
-    device.updated_at = datetime.utcnow()
-    await session.commit()
-    await session.refresh(device)
-    return device
+        device.updated_at = datetime.utcnow()
+        await session.commit()
+        await session.refresh(device)
+        return device
+    except Exception:
+        await session.rollback()
+        raise
 
 
 async def delete_device(session: AsyncSession, device_id: str) -> bool:
     """Soft delete a device (set is_active to False)."""
-    device = await get_device(session, device_id)
-    if not device:
-        return False
+    try:
+        device = await get_device(session, device_id)
+        if not device:
+            return False
 
-    device.is_active = False
-    device.updated_at = datetime.utcnow()
-    await session.commit()
-    return True
+        device.is_active = False
+        device.updated_at = datetime.utcnow()
+        await session.commit()
+        return True
+    except Exception:
+        await session.rollback()
+        raise
 
 
 async def activate_device(session: AsyncSession, device_id: str) -> bool:
     """Reactivate a device (set is_active to True)."""
-    device = await get_device(session, device_id)
-    if not device:
-        return False
+    try:
+        device = await get_device(session, device_id)
+        if not device:
+            return False
 
-    device.is_active = True
-    device.updated_at = datetime.utcnow()
-    await session.commit()
-    return True
+        device.is_active = True
+        device.updated_at = datetime.utcnow()
+        await session.commit()
+        return True
+    except Exception:
+        await session.rollback()
+        raise
 
 
 # ============================================================
@@ -129,10 +145,14 @@ async def get_polling_targets_by_device(session: AsyncSession, device_id: str) -
 
 async def create_polling_target(session: AsyncSession, target: "PollingTarget") -> "PollingTarget":
     """Create a new polling target."""
-    session.add(target)
-    await session.commit()
-    await session.refresh(target)
-    return target
+    try:
+        session.add(target)
+        await session.commit()
+        await session.refresh(target)
+        return target
+    except Exception:
+        await session.rollback()
+        raise
 
 
 async def update_polling_target(
@@ -143,41 +163,53 @@ async def update_polling_target(
     """Update an existing polling target configuration."""
     from app.database.models import PollingTargetUpdate
     
-    target = await get_polling_target(session, target_id)
-    if not target:
-        return None
+    try:
+        target = await get_polling_target(session, target_id)
+        if not target:
+            return None
 
-    # Update fields
-    update_data = target_update.model_dump(exclude_unset=True)
-    for key, value in update_data.items():
-        setattr(target, key, value)
+        # Update fields
+        update_data = target_update.model_dump(exclude_unset=True)
+        for key, value in update_data.items():
+            setattr(target, key, value)
 
-    target.updated_at = datetime.utcnow()
-    await session.commit()
-    await session.refresh(target)
-    return target
+        target.updated_at = datetime.utcnow()
+        await session.commit()
+        await session.refresh(target)
+        return target
+    except Exception:
+        await session.rollback()
+        raise
 
 
 async def delete_polling_target(session: AsyncSession, target_id: int) -> bool:
     """Soft delete a polling target (set is_active to False)."""
-    target = await get_polling_target(session, target_id)
-    if not target:
-        return False
+    try:
+        target = await get_polling_target(session, target_id)
+        if not target:
+            return False
 
-    target.is_active = False
-    target.updated_at = datetime.utcnow()
-    await session.commit()
-    return True
+        target.is_active = False
+        target.updated_at = datetime.utcnow()
+        await session.commit()
+        return True
+    except Exception:
+        await session.rollback()
+        raise
 
 
 async def activate_polling_target(session: AsyncSession, target_id: int) -> bool:
     """Reactivate a polling target (set is_active to True)."""
-    target = await get_polling_target(session, target_id)
-    if not target:
-        return False
+    try:
+        target = await get_polling_target(session, target_id)
+        if not target:
+            return False
 
-    target.is_active = True
-    target.updated_at = datetime.utcnow()
-    await session.commit()
-    return True
+        target.is_active = True
+        target.updated_at = datetime.utcnow()
+        await session.commit()
+        return True
+    except Exception:
+        await session.rollback()
+        raise
 
