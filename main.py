@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from contextlib import suppress, asynccontextmanager
+from datetime import datetime, timezone
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes import router as devices_router
@@ -114,5 +116,116 @@ app.include_router(cache_router, prefix="/api")
 
 
 @app.get("/health", tags=["system"])
-async def healthcheck() -> dict:
-    return {"status": "ok"}
+async def healthcheck(
+    request: Request,
+) -> dict:
+    """Comprehensive health check endpoint.
+    
+    Checks:
+    - Application status
+    - Database connectivity
+    - MQTT connection status
+    - Modbus gateway status
+    
+    Returns:
+        - 200: All services healthy
+        - 503: One or more services degraded
+    """
+    from sqlalchemy import select
+    from app.database.connection import async_session_maker
+    from fastapi import status
+    from fastapi.responses import JSONResponse
+    
+    health = {
+        "status": "ok",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "services": {
+            "database": "ok",
+            "mqtt": "ok",
+            "modbus": "ok",
+        },
+        "details": {},
+    }
+    
+    overall_status = "ok"
+    http_status = status.HTTP_200_OK
+    
+    # Check database
+    try:
+        async with async_session_maker() as session:
+            await session.execute(select(1))
+        health["details"]["database"] = {"connected": True}
+    except Exception as e:
+        health["services"]["database"] = "error"
+        health["details"]["database"] = {
+            "connected": False,
+            "error": str(e)
+        }
+        overall_status = "degraded"
+        http_status = status.HTTP_503_SERVICE_UNAVAILABLE
+    
+    # Check MQTT
+    try:
+        mqtt_mgr = getattr(request.app.state, "mqtt_manager", None)
+        if mqtt_mgr:
+            if mqtt_mgr._enabled:
+                is_connected = (
+                    mqtt_mgr._client is not None
+                    and hasattr(mqtt_mgr._client, "is_connected")
+                    and mqtt_mgr._client.is_connected
+                )
+                health["details"]["mqtt"] = {
+                    "enabled": True,
+                    "connected": is_connected,
+                    "broker": f"{mqtt_mgr._host}:{mqtt_mgr._port}",
+                }
+                if not is_connected:
+                    health["services"]["mqtt"] = "disconnected"
+                    overall_status = "degraded"
+                    if http_status == status.HTTP_200_OK:
+                        http_status = status.HTTP_503_SERVICE_UNAVAILABLE
+            else:
+                health["details"]["mqtt"] = {"enabled": False}
+                health["services"]["mqtt"] = "disabled"
+        else:
+            health["details"]["mqtt"] = {"enabled": False}
+            health["services"]["mqtt"] = "disabled"
+    except Exception as e:
+        health["services"]["mqtt"] = "error"
+        health["details"]["mqtt"] = {"error": str(e)}
+        overall_status = "degraded"
+        if http_status == status.HTTP_200_OK:
+            http_status = status.HTTP_503_SERVICE_UNAVAILABLE
+    
+    # Check Modbus gateways
+    try:
+        manager = getattr(request.app.state, "modbus_manager", None)
+        if manager:
+            gateways = manager.get_gateways_status()
+            connected_gateways = sum(1 for gw in gateways if gw["connected"])
+            health["details"]["modbus"] = {
+                "total_gateways": len(gateways),
+                "connected_gateways": connected_gateways,
+                "gateways": gateways,
+            }
+            if len(gateways) > 0 and connected_gateways == 0:
+                health["services"]["modbus"] = "warning"
+                if overall_status == "ok":
+                    overall_status = "degraded"
+                    http_status = status.HTTP_503_SERVICE_UNAVAILABLE
+        else:
+            health["details"]["modbus"] = {"initialized": False}
+            health["services"]["modbus"] = "error"
+            overall_status = "degraded"
+            if http_status == status.HTTP_200_OK:
+                http_status = status.HTTP_503_SERVICE_UNAVAILABLE
+    except Exception as e:
+        health["services"]["modbus"] = "error"
+        health["details"]["modbus"] = {"error": str(e)}
+        overall_status = "degraded"
+        if http_status == status.HTTP_200_OK:
+            http_status = status.HTTP_503_SERVICE_UNAVAILABLE
+    
+    health["status"] = overall_status
+    
+    return JSONResponse(content=health, status_code=http_status)
