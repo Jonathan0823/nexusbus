@@ -425,35 +425,32 @@ class ModbusClientManager:
             return self._gateways[key], self._locks[key]
 
     async def _run_with_gateway(self, device_id: str, func_name: str, *args, **kwargs):
+        """Execute a gateway method directly without circuit breaker.
+        
+        Circuit breaker is applied in the higher-level methods like read_registers.
+        """
         config = self._configs.get(device_id)
         if not config:
             raise DeviceNotFoundError(f"Unknown device_id '{device_id}'")
 
-        # Get circuit breaker for this device
-        circuit = await self._circuit_breakers.get_or_create(device_id)
+        gateway, lock = await self._get_gateway_and_lock(device_id)
+        slave_id = config.slave_id
         
-        async def _execute():
-            gateway, lock = await self._get_gateway_and_lock(device_id)
-            slave_id = config.slave_id
-            
-            async with lock:
+        async with lock:
+            method = getattr(gateway, func_name)
+            try:
+                return await asyncio.to_thread(method, slave_id, *args, **kwargs)
+            except ModbusException as exc:
+                raise ModbusClientError(str(exc)) from exc
+            except ConnectionError:
+                # retry once after reconnecting
+                gateway.close()
+                if not gateway.connect():
+                    raise ModbusClientError(
+                        f"Failed to connect to gateway '{config.host}:{config.port}'"
+                    ) from None
                 method = getattr(gateway, func_name)
-                try:
-                    return await asyncio.to_thread(method, slave_id, *args, **kwargs)
-                except ModbusException as exc:
-                    raise ModbusClientError(str(exc)) from exc
-                except ConnectionError:
-                    # retry once after reconnecting
-                    gateway.close()
-                    if not gateway.connect():
-                        raise ModbusClientError(
-                            f"Failed to connect to gateway '{config.host}:{config.port}'"
-                        ) from None
-                    method = getattr(gateway, func_name)
-                    return await asyncio.to_thread(method, slave_id, *args, **kwargs)
-        
-        # Execute through circuit breaker
-        return await circuit.call(_execute)
+                return await asyncio.to_thread(method, slave_id, *args, **kwargs)
 
     async def read_registers(
         self, device_id: str, register_type: RegisterType, address: int, count: int, retries: Optional[int] = None, timeout: Optional[float] = None
@@ -461,12 +458,21 @@ class ModbusClientManager:
         import time
         from app.core.metrics import metrics_collector
         
+        config = self._configs.get(device_id)
+        if not config:
+            raise DeviceNotFoundError(f"Unknown device_id '{device_id}'")
+        
+        # Get circuit breaker for this device
+        circuit = await self._circuit_breakers.get_or_create(device_id)
+        
         start_time = time.time()
         success = False
         
-        try:
-            response = await self._run_read(device_id, register_type, address, count, retries=retries, timeout=timeout)
+        async def _execute_read():
+            """Execute read and validate response - all inside circuit breaker."""
+            response = await self._run_read_internal(device_id, register_type, address, count, retries=retries, timeout=timeout)
             
+            # Validate response - failures here count toward circuit breaker
             if response is None:
                 raise ModbusClientError(f"No response from device '{device_id}'")
                 
@@ -475,13 +481,15 @@ class ModbusClientManager:
                 
             if hasattr(response, "registers"):
                 registers = list(response.registers)
-                result = registers[:count]
+                return registers[:count]
             elif hasattr(response, "bits"):
                 bits = [int(bit) for bit in response.bits]
-                result = bits[:count]
+                return bits[:count]
             else:
                 raise ModbusClientError("Unexpected Modbus response format")
-            
+        
+        try:
+            result = await circuit.call(_execute_read)
             success = True
             return result
         finally:
@@ -494,19 +502,32 @@ class ModbusClientManager:
     ) -> None:
         if register_type is not RegisterType.HOLDING:
             raise ModbusClientError("Writing is only supported for holding registers")
-        response = await self._run_with_gateway(
-            device_id, "write_holding_register", address, value
-        )
         
-        if response is None:
-            raise ModbusClientError(f"No response from device '{device_id}'")
+        config = self._configs.get(device_id)
+        if not config:
+            raise DeviceNotFoundError(f"Unknown device_id '{device_id}'")
+        
+        # Get circuit breaker for this device
+        circuit = await self._circuit_breakers.get_or_create(device_id)
+        
+        async def _execute_write():
+            """Execute write and validate response - all inside circuit breaker."""
+            response = await self._run_with_gateway(
+                device_id, "write_holding_register", address, value
+            )
             
-        if getattr(response, 'isError', lambda: False)():
-            raise ModbusClientError(str(response))
+            if response is None:
+                raise ModbusClientError(f"No response from device '{device_id}'")
+                
+            if getattr(response, 'isError', lambda: False)():
+                raise ModbusClientError(str(response))
+        
+        await circuit.call(_execute_write)
 
-    async def _run_read(
+    async def _run_read_internal(
         self, device_id: str, register_type: RegisterType, address: int, count: int, retries: Optional[int] = None, timeout: Optional[float] = None
     ):
+        """Internal read method - does not apply circuit breaker."""
         method_name = {
             RegisterType.HOLDING: "read_holding_registers",
             RegisterType.INPUT: "read_input_registers",
