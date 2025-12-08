@@ -44,6 +44,10 @@ def setup_logging(
         level=getattr(logging, log_level.upper()),
     )
     
+    # Silence noisy third-party loggers
+    logging.getLogger("pymodbus").setLevel(logging.WARNING)
+    logging.getLogger("pymodbus.logging").setLevel(logging.WARNING)
+    
     # Build processors list
     processors: list[Processor] = [
         structlog.contextvars.merge_contextvars,  # Merge context variables
