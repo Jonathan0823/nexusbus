@@ -14,6 +14,12 @@ from pymodbus.framer import FramerType
 from pymodbus.pdu import ExceptionResponse
 
 from app.core.logging_config import get_logger
+from app.core.circuit_breaker import (
+    CircuitBreakerRegistry,
+    CircuitBreakerConfig,
+    CircuitOpenError,
+)
+from app.core.config import settings
 
 logger = get_logger(__name__)
 
@@ -386,6 +392,14 @@ class ModbusClientManager:
         # Map (host, port) -> Lock
         self._locks: Dict[Tuple[str, int], asyncio.Lock] = {}
         self._manager_lock = asyncio.Lock()
+        
+        # Circuit breaker registry (per device)
+        self._circuit_breakers = CircuitBreakerRegistry(
+            default_config=CircuitBreakerConfig(
+                failure_threshold=settings.CIRCUIT_BREAKER_FAILURE_THRESHOLD,
+                recovery_timeout=float(settings.CIRCUIT_BREAKER_RECOVERY_TIMEOUT),
+            )
+        )
 
     def _create_gateway(self, config: DeviceConfig) -> ModbusGateway:
         return ModbusGateway(
@@ -415,26 +429,31 @@ class ModbusClientManager:
         if not config:
             raise DeviceNotFoundError(f"Unknown device_id '{device_id}'")
 
-        gateway, lock = await self._get_gateway_and_lock(device_id)
+        # Get circuit breaker for this device
+        circuit = await self._circuit_breakers.get_or_create(device_id)
         
-        # Inject slave_id as the first argument to the gateway method
-        slave_id = config.slave_id
-        
-        async with lock:
-            method = getattr(gateway, func_name)
-            try:
-                return await asyncio.to_thread(method, slave_id, *args, **kwargs)
-            except ModbusException as exc:
-                raise ModbusClientError(str(exc)) from exc
-            except ConnectionError:
-                # retry once after reconnecting
-                gateway.close()
-                if not gateway.connect():
-                    raise ModbusClientError(
-                        f"Failed to connect to gateway '{config.host}:{config.port}'"
-                    ) from None
+        async def _execute():
+            gateway, lock = await self._get_gateway_and_lock(device_id)
+            slave_id = config.slave_id
+            
+            async with lock:
                 method = getattr(gateway, func_name)
-                return await asyncio.to_thread(method, slave_id, *args, **kwargs)
+                try:
+                    return await asyncio.to_thread(method, slave_id, *args, **kwargs)
+                except ModbusException as exc:
+                    raise ModbusClientError(str(exc)) from exc
+                except ConnectionError:
+                    # retry once after reconnecting
+                    gateway.close()
+                    if not gateway.connect():
+                        raise ModbusClientError(
+                            f"Failed to connect to gateway '{config.host}:{config.port}'"
+                        ) from None
+                    method = getattr(gateway, func_name)
+                    return await asyncio.to_thread(method, slave_id, *args, **kwargs)
+        
+        # Execute through circuit breaker
+        return await circuit.call(_execute)
 
     async def read_registers(
         self, device_id: str, register_type: RegisterType, address: int, count: int, retries: Optional[int] = None, timeout: Optional[float] = None
@@ -569,4 +588,15 @@ class ModbusClientManager:
                 "connected": gateway.is_connected(),
             })
         return status_list
+
+    def get_circuit_status(self) -> Dict[str, dict]:
+        """Return status of all circuit breakers."""
+        return self._circuit_breakers.get_all_status()
+
+    async def reset_circuit(self, device_id: str) -> bool:
+        """Reset circuit breaker for a device.
+        
+        Returns True if reset was successful, False if device not found.
+        """
+        return await self._circuit_breakers.reset(device_id)
 
