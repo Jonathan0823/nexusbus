@@ -36,6 +36,10 @@ class Settings(BaseSettings):
     MQTT_USERNAME: str | None = None
     MQTT_PASSWORD: str | None = None
     MQTT_TOPIC_PREFIX: str = "modbus/data"
+    
+    # Circuit Breaker Configuration
+    CIRCUIT_BREAKER_FAILURE_THRESHOLD: int = 5  # Failures before opening circuit
+    CIRCUIT_BREAKER_RECOVERY_TIMEOUT: int = 30  # Seconds before retry attempt
 
 
 settings = Settings()
