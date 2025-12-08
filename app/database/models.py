@@ -97,7 +97,7 @@ class PollingTarget(SQLModel, table=True):
     __tablename__ = "polling_targets"
     
     id: Optional[int] = Field(default=None, primary_key=True)
-    device_id: str = Field(max_length=50, index=True)
+    device_id: str = Field(max_length=50, index=True, foreign_key="modbus_devices.device_id")
     register_type: str = Field(max_length=20)  # holding, input, coil, discrete
     address: int
     count: int = Field(default=1, ge=1, le=125)
