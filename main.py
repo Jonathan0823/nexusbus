@@ -246,6 +246,7 @@ async def healthcheck(
                 "total_gateways": len(gateways),
                 "connected_gateways": connected_gateways,
                 "gateways": gateways,
+                "circuits": manager.get_circuit_status(),
             }
             # Only mark as warning if we have devices but no gateways at all
             # (gateways are lazy-initialized, so this is expected until first request)
