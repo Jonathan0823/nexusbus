@@ -16,6 +16,7 @@ from app.core.modbus_client import (
     ModbusClientManager,
     RegisterType,
 )
+from app.core.circuit_breaker import CircuitOpenError
 from app.dependencies import get_cache, get_modbus_manager
 from app.schemas import CacheSource, WriteRegisterRequest
 
@@ -98,6 +99,12 @@ async def read_registers(
         )
     except DeviceNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    except CircuitOpenError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Device '{exc.device_id}' is unavailable. Retry in {exc.time_until_retry:.1f}s",
+            headers={"Retry-After": str(int(exc.time_until_retry) + 1)},
+        )
     except ModbusClientError as exc:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc))
 
@@ -155,6 +162,12 @@ async def write_register(
         }
     except DeviceNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    except CircuitOpenError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Device '{exc.device_id}' is unavailable. Retry in {exc.time_until_retry:.1f}s",
+            headers={"Retry-After": str(int(exc.time_until_retry) + 1)},
+        )
     except ModbusClientError as exc:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc))
 
