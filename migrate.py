@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 async def run_all_migrations():
     """Run all migrations in order."""
-    from migrations import __001_initial_setup, __002_add_polling_targets
+    from migrations import __001_initial_setup, __002_add_polling_targets, __003_add_polling_target_fk
     
     print("=" * 70)
     print("  Running All Migrations")
@@ -35,6 +35,10 @@ async def run_all_migrations():
     print("\n📦 Running Migration 002: Add Polling Targets...")
     await __002_add_polling_targets.main()
     
+    # Migration 003: FK constraint
+    print("\n📦 Running Migration 003: Add FK Constraint...")
+    await __003_add_polling_target_fk.main()
+    
     print("\n" + "=" * 70)
     print("  ✨ All Migrations Completed Successfully!")
     print("=" * 70)
@@ -45,6 +49,7 @@ async def run_single_migration(migration_number: str):
     migrations = {
         "001": ("Initial Setup", "migrations.001_initial_setup"),
         "002": ("Add Polling Targets", "migrations.002_add_polling_targets"),
+        "003": ("Add Polling Target FK", "migrations.003_add_polling_target_fk"),
     }
     
     if migration_number not in migrations:
