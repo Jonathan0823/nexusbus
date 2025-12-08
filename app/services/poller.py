@@ -11,6 +11,7 @@ from typing import List, Dict, Any
 from app.core.cache import RegisterCache
 from app.core.logging_config import get_logger
 from app.core.modbus_client import ModbusClientManager, ModbusClientError, RegisterType
+from app.core.circuit_breaker import CircuitOpenError
 from app.core.mqtt_client import MQTTClientManager
 from app.database import crud
 from app.database.connection import async_session_maker
@@ -170,6 +171,17 @@ async def _poll_single_target(
             error=str(exc),
             error_type=type(exc).__name__,
             message="Poll failed, will retry next cycle",
+        )
+        return (False, error_msg)
+
+    except CircuitOpenError as exc:
+        # Circuit breaker is open - skip silently, will retry after recovery timeout
+        error_msg = f"⚡ Circuit OPEN: {exc.device_id} - skip for {exc.time_until_retry:.1f}s"
+        logger.debug(
+            "polling_target_circuit_open",
+            device_id=exc.device_id,
+            time_until_retry=round(exc.time_until_retry, 1),
+            message="Device circuit breaker is open, skipping",
         )
         return (False, error_msg)
 
