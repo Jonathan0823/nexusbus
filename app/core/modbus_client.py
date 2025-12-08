@@ -235,7 +235,7 @@ class ModbusGateway:
                                 message="Read succeeded after retries",
                             )
                         return response
-                except (ModbusException, ModbusIOException) as exc:
+                except (ModbusException, ModbusIOException, OSError) as exc:
                     last_exception = exc
                     exc_type = type(exc).__name__
                     op_name = f"read_{operation}_registers" if operation in ("holding", "input") else f"read_{operation}s"
@@ -334,7 +334,7 @@ class ModbusGateway:
                 last_response = response
                 if self._is_valid_response(response, "write_holding_register", slave_id):
                     return response
-            except ModbusException as exc:
+            except (ModbusException, OSError) as exc:
                 logger.warning(
                     "modbus_write_exception",
                     operation="write_holding_register",
