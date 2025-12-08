@@ -303,6 +303,11 @@ class ModbusGateway:
                 last_exception=str(last_exception) if last_exception else None,
                 message="Read failed after all retries",
             )
+            
+            # Flush connection to clear any stale data in buffer
+            # This prevents response mix-up when multiple slave IDs share a connection
+            self.close()
+            
             return last_response
         finally:
             self._restore_timeout(orig_timeout)
