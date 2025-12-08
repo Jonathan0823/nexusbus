@@ -161,8 +161,6 @@ async def update_polling_target(
     target_update: "PollingTargetUpdate",
 ) -> Optional["PollingTarget"]:
     """Update an existing polling target configuration."""
-    from app.database.models import PollingTargetUpdate
-    
     try:
         target = await get_polling_target(session, target_id)
         if not target:
