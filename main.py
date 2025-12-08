@@ -36,6 +36,37 @@ setup_logging(
 logger = get_logger(__name__)
 
 
+def _suppress_connection_errors(loop, context):
+    """Custom exception handler to suppress noisy connection errors on Windows.
+    
+    These errors occur when sockets are closed during read operations,
+    which is expected behavior for Modbus connections that time out.
+    """
+    exception = context.get("exception")
+    
+    # Suppress connection-related errors that are expected
+    if isinstance(exception, (ConnectionResetError, OSError, ConnectionError)):
+        # Log at debug level instead of printing traceback
+        logger.debug(
+            "asyncio_connection_error_suppressed",
+            error=str(exception),
+            message="Connection error suppressed (expected during device timeout)",
+        )
+        return
+    
+    # For other exceptions, use default handler
+    loop.default_exception_handler(context)
+
+
+# Install custom exception handler
+try:
+    loop = asyncio.get_event_loop()
+    loop.set_exception_handler(_suppress_connection_errors)
+except RuntimeError:
+    # No event loop running yet, will be set when app starts
+    pass
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
