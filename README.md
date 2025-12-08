@@ -23,6 +23,7 @@
 - ✅ **Parallel Polling** - Poll multiple devices concurrently for improved performance
 - ✅ **Hot-Reload** - Apply configuration changes without server restart
 - ✅ **Connection Pooling** - Efficiently manage Modbus TCP connections & shared gateways
+- ✅ **Circuit Breaker** - Automatic failure detection with fast-fail and auto-recovery
 - ✅ **Request Timeout Handling** - Automatic timeout and connection reset
 - ✅ **REST API** - Complete API for device interaction and management
 - ✅ **Async Support** - Full async/await with asyncpg for optimal performance
@@ -209,6 +210,13 @@ This application uses a `.env` file for configuration. Copy `.env.example` to `.
 | `LOG_JSON`          | Output logs in JSON format (for production).   | `false` |
 | `LOG_INCLUDE_CALLER`| Include caller information in logs.            | `true`  |
 
+**Circuit Breaker Configuration**
+
+| Variable                           | Description                               | Default |
+| :--------------------------------- | :---------------------------------------- | :------ |
+| `CIRCUIT_BREAKER_FAILURE_THRESHOLD`| Consecutive failures before opening.      | `5`     |
+| `CIRCUIT_BREAKER_RECOVERY_TIMEOUT` | Seconds before attempting recovery.       | `30`    |
+
 ### Device Parameters
 
 | Parameter     | Type    | Required | Description                     | Default |
@@ -392,6 +400,7 @@ GET /api/devices/{id}/registers?source=cache
 ### Connection Management
 
 - **Shared Gateways**: Multiple devices on same gateway share one connection
+- **Circuit Breaker**: After 5 failures, requests fast-fail with 503 for 30s, then auto-retry
 - **Auto Recovery**: Timeout handling with automatic reconnection
 - **Request Serialization**: Prevents slave ID conflicts
 - **Thread Pooling**: Non-blocking Modbus operations
