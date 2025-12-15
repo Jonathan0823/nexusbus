@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from pydantic import field_validator
@@ -22,9 +22,9 @@ class ModbusDevice(SQLModel, table=True):
     framer: str = Field(default="RTU", max_length=20)
     max_retries: int = Field(default=5)
     retry_delay: float = Field(default=0.1)
-    is_active: bool = Field(default=True)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    is_active: bool = Field(default=True, index=True)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 # Pydantic schemas for API
@@ -101,10 +101,10 @@ class PollingTarget(SQLModel, table=True):
     register_type: str = Field(max_length=20)  # holding, input, coil, discrete
     address: int
     count: int = Field(default=1, ge=1, le=125)
-    is_active: bool = Field(default=True)
+    is_active: bool = Field(default=True, index=True)
     description: Optional[str] = Field(default=None, max_length=200)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 # Pydantic schemas for Polling API

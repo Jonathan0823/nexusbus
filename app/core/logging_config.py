@@ -20,8 +20,8 @@ def add_log_level(logger: logging.Logger, method_name: str, event_dict: EventDic
 
 def add_timestamp(logger: logging.Logger, method_name: str, event_dict: EventDict) -> EventDict:
     """Add timestamp to event dict."""
-    import datetime
-    event_dict["timestamp"] = datetime.datetime.utcnow().isoformat() + "Z"
+    from datetime import datetime, timezone
+    event_dict["timestamp"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     return event_dict
 
 
