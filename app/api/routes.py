@@ -8,7 +8,7 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-from app.config.devices import API_REQUEST_TIMEOUT_SECONDS, DEVICE_CONFIGS
+from app.config.devices import API_REQUEST_TIMEOUT_SECONDS
 from app.core.cache import RegisterCache
 from app.core.modbus_client import (
     DeviceNotFoundError,
@@ -19,22 +19,29 @@ from app.core.modbus_client import (
 from app.core.circuit_breaker import CircuitOpenError
 from app.dependencies import get_cache, get_modbus_manager
 from app.schemas import CacheSource, WriteRegisterRequest
+from app.database.connection import get_session
+from app.database import crud
+from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/devices", tags=["devices"])
 
 
 @router.get("", response_model=List[dict])
-async def list_devices() -> List[dict]:
+async def list_devices(
+    session: AsyncSession = Depends(get_session),
+) -> List[dict]:
+    """List all active Modbus devices from database."""
+    devices = await crud.get_all_active_devices(session)
     return [
         {
-            "device_id": cfg.device_id,
-            "host": cfg.host,
-            "port": cfg.port,
-            "slave_id": cfg.slave_id,
-            "timeout": cfg.timeout,
-            "gateway": f"{cfg.host}:{cfg.port}",
+            "device_id": device.device_id,
+            "host": device.host,
+            "port": device.port,
+            "slave_id": device.slave_id,
+            "timeout": device.timeout,
+            "gateway": f"{device.host}:{device.port}",
         }
-        for cfg in DEVICE_CONFIGS
+        for device in devices
     ]
 
 

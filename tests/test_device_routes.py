@@ -1,12 +1,12 @@
 from fastapi.testclient import TestClient
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, patch, AsyncMock
 
 
 def test_get_devices_empty(client: TestClient):
     """Test getting devices when none are configured (mocked empty)."""
-    # Since the endpoint reads directly from the imported DEVICE_CONFIGS,
-    # we must patch it where it is used (app.api.routes).
-    with patch("app.api.routes.DEVICE_CONFIGS", []):
+    # Since the endpoint now reads from database via crud.get_all_active_devices,
+    # we must patch the CRUD function to return an empty list.
+    with patch("app.api.routes.crud.get_all_active_devices", new=AsyncMock(return_value=[])):
         response = client.get("/api/devices")
         assert response.status_code == 200
         assert response.json() == []
