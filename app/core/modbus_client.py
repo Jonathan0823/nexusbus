@@ -207,6 +207,9 @@ class ModbusGateway:
         if operation not in method_map:
             raise ValueError(f"Invalid operation: {operation}. Must be one of {list(method_map.keys())}")
         
+        # Compute operation name once for logging
+        op_name = f"read_{operation}_registers" if operation in ("holding", "input") else f"read_{operation}s"
+        
         read_method = method_map[operation]
         
         # Apply temporary timeout override
@@ -223,8 +226,6 @@ class ModbusGateway:
                         address=address, count=count, slave=slave_id
                     )
                     last_response = response
-                    # Use appropriate operation name for logging
-                    op_name = f"read_{operation}_registers" if operation in ("holding", "input") else f"read_{operation}s"
                     if self._is_valid_response(response, op_name, slave_id):
                         if attempt > 0:
                             logger.info(
@@ -237,13 +238,11 @@ class ModbusGateway:
                         return response
                 except (ModbusException, ModbusIOException, OSError) as exc:
                     last_exception = exc
-                    exc_type = type(exc).__name__
-                    op_name = f"read_{operation}_registers" if operation in ("holding", "input") else f"read_{operation}s"
                     logger.warning(
                         "modbus_read_exception",
                         operation=op_name,
                         slave_id=slave_id,
-                        exception_type=exc_type,
+                        exception_type=type(exc).__name__,
                         exception=str(exc),
                         attempt=attempt + 1,
                         max_attempts=num_attempts,
@@ -256,7 +255,6 @@ class ModbusGateway:
                         self._apply_temp_timeout(timeout)
                 except Exception as exc:
                     last_exception = exc
-                    op_name = f"read_{operation}_registers" if operation in ("holding", "input") else f"read_{operation}s"
                     logger.error(
                         "modbus_read_unexpected_error",
                         operation=op_name,
@@ -275,26 +273,17 @@ class ModbusGateway:
                         self._apply_temp_timeout(timeout)
                 
                 if attempt < num_attempts - 1:
-                    op_name = f"read_{operation}_registers" if operation in ("holding", "input") else f"read_{operation}s"
-                    if operation in ("holding", "input"):
-                        logger.info(
-                            "modbus_read_retry",
-                            operation=op_name,
-                            slave_id=slave_id,
-                            attempt=attempt + 1,
-                            max_attempts=num_attempts,
-                        )
-                    else:
-                        logger.debug(
-                            "modbus_read_retry",
-                            operation=op_name,
-                            slave_id=slave_id,
-                            attempt=attempt + 1,
-                            max_attempts=num_attempts,
-                        )
+                    # Log at INFO for holding/input, DEBUG for coil/discrete
+                    log_fn = logger.info if operation in ("holding", "input") else logger.debug
+                    log_fn(
+                        "modbus_read_retry",
+                        operation=op_name,
+                        slave_id=slave_id,
+                        attempt=attempt + 1,
+                        max_attempts=num_attempts,
+                    )
                     time.sleep(self.retry_delay)
             
-            op_name = f"read_{operation}_registers" if operation in ("holding", "input") else f"read_{operation}s"
             logger.error(
                 "modbus_read_failed",
                 operation=op_name,
@@ -460,7 +449,6 @@ class ModbusClientManager:
     async def read_registers(
         self, device_id: str, register_type: RegisterType, address: int, count: int, retries: Optional[int] = None, timeout: Optional[float] = None
     ) -> List[int]:
-        import time
         from app.core.metrics import metrics_collector
         
         config = self._configs.get(device_id)
