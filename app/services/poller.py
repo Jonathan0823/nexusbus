@@ -200,8 +200,9 @@ async def _poll_single_target(
         )
         return (False, error_msg)
 
-    except (ModbusClientError, ConnectionError) as exc:
-        # Modbus error - log briefly and skip, will retry next cycle
+    except (ModbusClientError, ConnectionError, ConnectionResetError, OSError) as exc:
+        # Connection error - log briefly and skip, will retry next cycle
+        # Includes ConnectionResetError and OSError for Windows-specific socket errors
         error_msg = (
             f"✗ Poll failed: {target.get('device_id')} "
             f"{target.get('register_type')} addr={target.get('address')} - "
