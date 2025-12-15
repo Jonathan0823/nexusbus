@@ -236,6 +236,23 @@ class ModbusGateway:
                                 message="Read succeeded after retries",
                             )
                         return response
+                    else:
+                        # Invalid response (slave_id mismatch, error response, etc.)
+                        # Close connection to flush buffer and prevent stale responses
+                        logger.debug(
+                            "modbus_invalid_response_flush",
+                            operation=op_name,
+                            slave_id=slave_id,
+                            attempt=attempt + 1,
+                            message="Invalid response detected, flushing connection",
+                        )
+                        self.close()
+                        if attempt < num_attempts - 1:
+                            # Brief delay to allow device to stabilize
+                            time.sleep(0.05)
+                            self.ensure_connection()
+                            # Re-apply timeout after reconnect
+                            self._apply_temp_timeout(timeout)
                 except (ModbusException, ModbusIOException, OSError) as exc:
                     last_exception = exc
                     logger.warning(
