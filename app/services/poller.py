@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import time
 from copy import deepcopy
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Set
 
 
 from app.core.cache import RegisterCache
@@ -17,6 +17,9 @@ from app.database import crud
 from app.database.connection import async_session_maker
 
 logger = get_logger(__name__)
+
+# Track pending MQTT publish tasks for graceful shutdown
+_pending_mqtt_tasks: Set[asyncio.Task] = set()
 
 
 async def _safe_mqtt_publish(
@@ -43,6 +46,45 @@ async def _safe_mqtt_publish(
             exc_info=True,
         )
 
+
+async def await_pending_mqtt_tasks(timeout: float = 5.0) -> int:
+    """Wait for all pending MQTT publish tasks to complete.
+    
+    Args:
+        timeout: Maximum time to wait for tasks to complete
+        
+    Returns:
+        Number of tasks that were awaited
+    """
+    if not _pending_mqtt_tasks:
+        return 0
+    
+    task_count = len(_pending_mqtt_tasks)
+    logger.info(
+        "mqtt_awaiting_pending_tasks",
+        task_count=task_count,
+        timeout=timeout,
+        message=f"Awaiting {task_count} pending MQTT publish tasks",
+    )
+    
+    # Wait for all pending tasks with timeout
+    done, pending = await asyncio.wait(
+        _pending_mqtt_tasks.copy(),
+        timeout=timeout,
+        return_when=asyncio.ALL_COMPLETED,
+    )
+    
+    if pending:
+        logger.warning(
+            "mqtt_tasks_timeout",
+            pending_count=len(pending),
+            message=f"{len(pending)} MQTT tasks did not complete within timeout",
+        )
+        # Cancel remaining tasks
+        for task in pending:
+            task.cancel()
+    
+    return len(done)
 
 async def load_polling_targets_from_db() -> List[dict]:
     """Load active polling targets from database."""
@@ -124,7 +166,7 @@ async def _poll_single_target(
             message="Successfully polled target",
         )
 
-        # Publish to MQTT (Fire & Forget with error handling)
+        # Publish to MQTT (Fire & Forget with error handling and tracking)
         if mqtt_manager:
             # Topic: {prefix}/{device_id}/{register_type}/{address}
             topic_suffix = f"{device_id}/{register_type.value}/{address}"
@@ -136,10 +178,12 @@ async def _poll_single_target(
                 "values": data,
                 "timestamp": time.time(),  # Standard Unix timestamp
             }
-            # Run in background with error handling
-            asyncio.create_task(
+            # Run in background with error handling and task tracking
+            task = asyncio.create_task(
                 _safe_mqtt_publish(mqtt_manager, topic_suffix, payload, device_id)
             )
+            _pending_mqtt_tasks.add(task)
+            task.add_done_callback(_pending_mqtt_tasks.discard)
 
         return (True, "")
 

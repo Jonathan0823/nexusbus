@@ -22,7 +22,7 @@ from app.core.cache import RegisterCache
 from app.core.config import settings
 from app.core.logging_config import get_logger, setup_logging
 from app.core.modbus_client import ModbusClientManager
-from app.services.poller import poll_registers
+from app.services.poller import poll_registers, await_pending_mqtt_tasks
 from app.database.connection import create_db_and_tables, close_db, async_session_maker
 
 from app.core.mqtt_client import mqtt_manager
@@ -154,6 +154,10 @@ async def lifespan(app: FastAPI):
     logger.debug("modbus_gateways_closed", message="All Modbus gateways closed")
 
     # Stop MQTT Client
+    # First, await any pending MQTT publish tasks
+    from app.services.poller import await_pending_mqtt_tasks
+    await await_pending_mqtt_tasks(timeout=5.0)
+    
     mqtt_manager_inst = getattr(app.state, "mqtt_manager", None)
     if mqtt_manager_inst:
         await mqtt_manager_inst.stop()
