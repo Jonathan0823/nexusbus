@@ -19,6 +19,12 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/modbus_db"
     DATABASE_ECHO: bool = False
     
+    # Database connection pool settings
+    DATABASE_POOL_SIZE: int = 5  # Number of connections to keep in pool
+    DATABASE_MAX_OVERFLOW: int = 10  # Max extra connections beyond pool_size
+    DATABASE_POOL_TIMEOUT: int = 30  # Seconds to wait for a connection
+    DATABASE_POOL_RECYCLE: int = 1800  # Recycle connections after 30 minutes
+    
     # Application settings
     APP_NAME: str = "Modbus Middleware"
     APP_VERSION: str = "0.1.0"
