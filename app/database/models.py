@@ -3,11 +3,69 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Optional, Tuple
 
 from pydantic import field_validator
 from sqlmodel import Field, SQLModel
 
+
+# =============================================================================
+# Reusable Validators (DRY principle)
+# =============================================================================
+
+VALID_FRAMERS: Tuple[str, ...] = ("RTU", "SOCKET", "ASCII")
+VALID_REGISTER_TYPES: Tuple[str, ...] = ("holding", "input", "coil", "discrete")
+
+
+def validate_framer_value(v: str | None, allow_none: bool = False) -> str | None:
+    """Validate framer value and normalize to uppercase.
+    
+    Args:
+        v: Framer value to validate
+        allow_none: If True, None values are passed through
+        
+    Returns:
+        Normalized uppercase framer value
+        
+    Raises:
+        ValueError: If framer value is invalid
+    """
+    if v is None:
+        if allow_none:
+            return None
+        raise ValueError("framer cannot be None")
+    v_upper = v.upper()
+    if v_upper not in VALID_FRAMERS:
+        raise ValueError(f"framer must be one of {VALID_FRAMERS}, got '{v}'")
+    return v_upper
+
+
+def validate_register_type_value(v: str | None, allow_none: bool = False) -> str | None:
+    """Validate register type value and normalize to lowercase.
+    
+    Args:
+        v: Register type value to validate
+        allow_none: If True, None values are passed through
+        
+    Returns:
+        Normalized lowercase register type value
+        
+    Raises:
+        ValueError: If register type value is invalid
+    """
+    if v is None:
+        if allow_none:
+            return None
+        raise ValueError("register_type cannot be None")
+    v_lower = v.lower()
+    if v_lower not in VALID_REGISTER_TYPES:
+        raise ValueError(f"register_type must be one of {VALID_REGISTER_TYPES}, got '{v}'")
+    return v_lower
+
+
+# =============================================================================
+# Database Models
+# =============================================================================
 
 class ModbusDevice(SQLModel, table=True):
     """Modbus device configuration stored in database."""
@@ -44,11 +102,7 @@ class ModbusDeviceCreate(SQLModel):
     @classmethod
     def validate_framer(cls, v: str) -> str:
         """Validate framer value."""
-        valid_framers = ["RTU", "SOCKET", "ASCII"]
-        v_upper = v.upper()
-        if v_upper not in valid_framers:
-            raise ValueError(f"framer must be one of {valid_framers}, got '{v}'")
-        return v_upper
+        return validate_framer_value(v, allow_none=False)
 
 
 class ModbusDeviceUpdate(SQLModel):
@@ -66,13 +120,7 @@ class ModbusDeviceUpdate(SQLModel):
     @classmethod
     def validate_framer(cls, v: str | None) -> str | None:
         """Validate framer value."""
-        if v is None:
-            return None
-        valid_framers = ["RTU", "SOCKET", "ASCII"]
-        v_upper = v.upper()
-        if v_upper not in valid_framers:
-            raise ValueError(f"framer must be one of {valid_framers}, got '{v}'")
-        return v_upper
+        return validate_framer_value(v, allow_none=True)
 
 
 class ModbusDeviceResponse(SQLModel):
@@ -121,11 +169,7 @@ class PollingTargetCreate(SQLModel):
     @classmethod
     def validate_register_type(cls, v: str) -> str:
         """Validate register type."""
-        valid_types = ["holding", "input", "coil", "discrete"]
-        v_lower = v.lower()
-        if v_lower not in valid_types:
-            raise ValueError(f"register_type must be one of {valid_types}, got '{v}'")
-        return v_lower
+        return validate_register_type_value(v, allow_none=False)
 
 
 class PollingTargetUpdate(SQLModel):
@@ -141,13 +185,7 @@ class PollingTargetUpdate(SQLModel):
     @classmethod
     def validate_register_type(cls, v: str | None) -> str | None:
         """Validate register type."""
-        if v is None:
-            return None
-        valid_types = ["holding", "input", "coil", "discrete"]
-        v_lower = v.lower()
-        if v_lower not in valid_types:
-            raise ValueError(f"register_type must be one of {valid_types}, got '{v}'")
-        return v_lower
+        return validate_register_type_value(v, allow_none=True)
 
 
 class PollingTargetResponse(SQLModel):
