@@ -13,6 +13,7 @@ The Device Management API allows you to register, configure, and manage Modbus d
 ## 🏗️ Architecture
 
 The system uses a **connection pooling** mechanism:
+
 - **Shared Gateways**: Multiple devices on the same IP/Port share a single TCP connection.
 - **Request Serialization**: Requests to the same gateway are queued to prevent collisions.
 - **Automatic Recovery**: Broken connections are automatically detected and reset.
@@ -30,6 +31,7 @@ GET /api/admin/devices
 ```
 
 **Response:**
+
 ```json
 [
   {
@@ -37,7 +39,7 @@ GET /api/admin/devices
     "host": "localhost",
     "port": 5020,
     "slave_id": 1,
-    "protocol": "tcp",
+    "framer": "tcp",
     "is_active": true,
     "timeout": 10,
     "max_retries": 3
@@ -55,13 +57,14 @@ Content-Type: application/json
 ```
 
 **Body:**
+
 ```json
 {
   "device_id": "warehouse-1",
   "host": "192.168.1.100",
   "port": 502,
   "slave_id": 1,
-  "protocol": "tcp",
+  "framer": "tcp",
   "timeout": 5,
   "description": "Main warehouse sensor"
 }
@@ -76,6 +79,7 @@ PUT /api/admin/devices/{device_id}
 ```
 
 **Body:**
+
 ```json
 {
   "timeout": 10,
@@ -103,16 +107,16 @@ POST /api/admin/devices/reload
 
 ## ⚙️ Device Parameters
 
-| Parameter | Type | Required | Description | Default |
-| :--- | :--- | :--- | :--- | :--- |
-| `device_id` | string | ✅ | Unique identifier for the device. No spaces recommended. | - |
-| `host` | string | ✅ | IP address or hostname. | - |
-| `port` | integer | ✅ | TCP port number. | 502 |
-| `slave_id` | integer | ✅ | Modbus Slave ID (Unit ID). | 1 |
-| `protocol` | string | ❌ | Protocol type (`tcp`, `rtu`, `ascii`, `udp`). | `tcp` |
-| `timeout` | float | ❌ | Read/Write timeout in seconds. | 3.0 |
-| `max_retries` | integer | ❌ | Number of retries on failure. | 3 |
-| `retry_delay` | float | ❌ | Delay between retries in seconds. | 0.1 |
+| Parameter     | Type    | Required | Description                                              | Default |
+| :------------ | :------ | :------- | :------------------------------------------------------- | :------ |
+| `device_id`   | string  | ✅       | Unique identifier for the device. No spaces recommended. | -       |
+| `host`        | string  | ✅       | IP address or hostname.                                  | -       |
+| `port`        | integer | ✅       | TCP port number.                                         | 502     |
+| `slave_id`    | integer | ✅       | Modbus Slave ID (Unit ID).                               | 1       |
+| `framer`      | string  | ❌       | Protocol type (`tcp`, `rtu`, `ascii`, `udp`).            | `tcp`   |
+| `timeout`     | float   | ❌       | Read/Write timeout in seconds.                           | 3.0     |
+| `max_retries` | integer | ❌       | Number of retries on failure.                            | 3       |
+| `retry_delay` | float   | ❌       | Delay between retries in seconds.                        | 0.1     |
 
 ---
 
@@ -147,6 +151,7 @@ curl -X POST http://localhost:8000/api/devices/warehouse-1/registers/write \
 The application supports hot-reloading of device configurations. This means you don't need to restart the entire server when adding a new device.
 
 **Workflow:**
+
 1.  `POST /api/admin/devices` (Add new device to DB)
 2.  `POST /api/admin/devices/reload` (Tell app to refresh connections)
 3.  Start using the new device immediately.
@@ -156,20 +161,25 @@ The application supports hot-reloading of device configurations. This means you 
 ## 🔧 Troubleshooting
 
 ### "Device not found"
+
 - Did you run the **reload** endpoint? (`POST /api/admin/devices/reload`)
 - Check if the device is `is_active: true`.
 
 ### "Connection refused"
+
 - Verify IP and Port.
 - Check if the physical device is powered on.
 - Verify no firewall is blocking the connection.
 
 ### "Gateway busy"
+
 - If multiple devices share the same IP/Port (Gateway), and one is slow, others might wait.
 - Increase `timeout` if the network is slow.
 
 ### Data is Stale
+
 - If reading with `source=cache`, ensure the Polling Service is running and configured for this device.
 - Check [Polling Configuration](./POLLING_CONFIGURATION.md).
 
 ---
+
