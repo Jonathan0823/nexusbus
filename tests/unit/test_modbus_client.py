@@ -53,6 +53,7 @@ async def test_read_registers_success(modbus_manager):
     mock_response = MagicMock()
     mock_response.isError.return_value = False
     mock_response.registers = [10, 20, 30]
+    mock_response.slave_id = 1  # Must match requested slave_id
     mock_instance.read_holding_registers.return_value = mock_response
     mock_instance.connect.return_value = True
     mock_instance.is_socket_open.return_value = True
@@ -87,6 +88,7 @@ async def test_read_registers_retry_success(modbus_manager):
     mock_response = MagicMock()
     mock_response.isError.return_value = False
     mock_response.registers = [99]
+    mock_response.slave_id = 1  # Must match requested slave_id
 
     mock_instance.read_holding_registers.side_effect = [
         ModbusIOException("Connection lost"),
@@ -151,6 +153,7 @@ async def test_write_register_success(modbus_manager):
 
     mock_response = MagicMock()
     mock_response.isError.return_value = False
+    mock_response.slave_id = 1  # Must match requested slave_id
     mock_instance.write_register.return_value = mock_response
 
     with patch_gateway_client(MockClient):
