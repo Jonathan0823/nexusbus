@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import time
 from copy import deepcopy
-from typing import List, Dict, Any, Set
+from typing import Dict, List, Any, Set, Tuple
 
 
 from app.core.cache import RegisterCache
@@ -257,7 +257,8 @@ async def poll_registers(
 
     This function implements:
     - Race condition prevention: Takes snapshot of targets at start of each cycle
-    - Parallel polling: Polls all targets concurrently using asyncio.gather
+    - Gateway-serialized polling: Targets on same gateway (host:port) are polled sequentially
+    - Parallel gateway polling: Different gateways can be polled in parallel
     - Hot-reload support: Reloads targets from database each cycle
 
     Args:
@@ -279,7 +280,7 @@ async def poll_registers(
         "polling_service_started",
         database_mode=use_database,
         interval_seconds=interval_seconds,
-        parallel_polling=True,
+        gateway_serial_polling=True,
         message="Polling service started",
     )
 
@@ -317,41 +318,102 @@ async def poll_registers(
             )
             cycle_start_time = time.time()
 
-            # PARALLEL POLLING: Poll all targets concurrently
-            # This significantly improves performance when polling multiple devices
-            polling_tasks = [
-                _poll_single_target(target, manager, cache, mqtt_manager)
-                for target in targets
+            # GROUP TARGETS BY GATEWAY (host:port)
+            # This ensures targets on the same gateway are polled sequentially
+            # to prevent response mix-up from shared connections
+            gateway_groups: Dict[Tuple[str, int], List[dict]] = {}
+            
+            for target in targets:
+                device_id = target.get("device_id")
+                if not device_id:
+                    continue
+                    
+                # Get device config to find gateway key
+                config = manager.get_config(device_id)
+                if not config:
+                    logger.warning(
+                        "polling_target_unknown_device",
+                        device_id=device_id,
+                        message="Skipping target with unknown device",
+                    )
+                    continue
+                
+                gateway_key = (config.host, config.port)
+                if gateway_key not in gateway_groups:
+                    gateway_groups[gateway_key] = []
+                gateway_groups[gateway_key].append(target)
+
+            # LOG gateway grouping for debugging
+            for gw_key, gw_targets in gateway_groups.items():
+                logger.debug(
+                    "polling_gateway_group",
+                    host=gw_key[0],
+                    port=gw_key[1],
+                    target_count=len(gw_targets),
+                    device_ids=[t.get("device_id") for t in gw_targets],
+                )
+
+            # POLL EACH GATEWAY GROUP SEQUENTIALLY, BUT DIFFERENT GATEWAYS IN PARALLEL
+            # This prevents response mix-up while maintaining some parallelism
+            
+            async def poll_gateway_group(
+                gateway_key: Tuple[str, int], 
+                group_targets: List[dict]
+            ) -> Tuple[int, int]:
+                """Poll all targets for one gateway sequentially.
+                
+                Returns (success_count, failure_count) for this gateway.
+                """
+                success_count = 0
+                failure_count = 0
+                
+                for target in group_targets:
+                    result = await _poll_single_target(target, manager, cache, mqtt_manager)
+                    if isinstance(result, tuple):
+                        success, _ = result
+                        if success:
+                            success_count += 1
+                        else:
+                            failure_count += 1
+                    else:
+                        failure_count += 1
+                
+                return success_count, failure_count
+
+            # Create tasks for each gateway group (parallel across gateways)
+            gateway_tasks = [
+                poll_gateway_group(gw_key, gw_targets)
+                for gw_key, gw_targets in gateway_groups.items()
             ]
 
-            # Wait for all polling tasks to complete (with return_exceptions=True
-            # to prevent one failure from stopping others)
-            results = await asyncio.gather(*polling_tasks, return_exceptions=True)
+            # Wait for all gateway groups to complete
+            gateway_results = await asyncio.gather(*gateway_tasks, return_exceptions=True)
 
             # Process results
             success_count = 0
             failure_count = 0
 
-            for i, result in enumerate(results):
+            for i, result in enumerate(gateway_results):
                 if isinstance(result, Exception):
+                    gw_key = list(gateway_groups.keys())[i]
                     logger.error(
-                        "polling_task_exception",
-                        task_index=i,
-                        target=targets[i] if i < len(targets) else None,
+                        "polling_gateway_exception",
+                        gateway_host=gw_key[0],
+                        gateway_port=gw_key[1],
                         exception=str(result),
                         exception_type=type(result).__name__,
-                        message="Polling task raised exception",
+                        message="Gateway group raised exception",
                         exc_info=True,
                     )
-                    failure_count += 1
+                    # Count all targets in this group as failures
+                    failure_count += len(gateway_groups[gw_key])
                 elif isinstance(result, tuple):
-                    success, error_msg = result
-                    if success:
-                        success_count += 1
-                    else:
-                        failure_count += 1
+                    s, f = result
+                    success_count += s
+                    failure_count += f
                 else:
-                    failure_count += 1
+                    gw_key = list(gateway_groups.keys())[i]
+                    failure_count += len(gateway_groups[gw_key])
 
             cycle_duration = time.time() - cycle_start_time
             cycle_duration_ms = cycle_duration * 1000
@@ -367,6 +429,7 @@ async def poll_registers(
                 success_count=success_count,
                 failure_count=failure_count,
                 total_targets=len(targets),
+                gateway_count=len(gateway_groups),
                 duration_seconds=round(cycle_duration, 2),
                 duration_ms=round(cycle_duration_ms, 2),
                 message="Polling cycle completed",
