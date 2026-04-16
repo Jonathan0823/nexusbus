@@ -70,7 +70,7 @@ async def test_read_registers_success(modbus_manager):
         # Verify
         assert result == [10, 20, 30]
         mock_instance.read_holding_registers.assert_called_with(
-            address=0, count=3, slave=1
+            address=0, count=3, device_id=1
         )
 
 
@@ -163,7 +163,7 @@ async def test_write_register_success(modbus_manager):
         )
 
         # Verify
-        mock_instance.write_register.assert_called_with(address=5, value=123, slave=1)
+        mock_instance.write_register.assert_called_with(address=5, value=123, device_id=1)
 
 
 @pytest.mark.asyncio
