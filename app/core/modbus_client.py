@@ -223,7 +223,7 @@ class ModbusGateway:
             for attempt in range(num_attempts):
                 try:
                     response = read_method(
-                        address=address, count=count, slave=slave_id
+                        address=address, count=count, device_id=slave_id
                     )
                     last_response = response
                     if self._is_valid_response(response, op_name, slave_id):
@@ -340,7 +340,7 @@ class ModbusGateway:
         for attempt in range(self.max_retries):
             try:
                 response = self._client.write_register(
-                    address=address, value=value, slave=slave_id
+                    address=address, value=value, device_id=slave_id
                 )
                 last_response = response
                 if self._is_valid_response(response, "write_holding_register", slave_id):
@@ -399,8 +399,10 @@ class ModbusClientManager:
             cfg.device_id: cfg for cfg in device_configs
         }
         # Map (host, port) -> ModbusGateway
+        # IMPORTANT: One gateway per host:port, NOT per slave_id
+        # All devices sharing the same host:port share ONE connection
         self._gateways: Dict[Tuple[str, int], ModbusGateway] = {}
-        # Map (host, port) -> Lock
+        # Map (host, port) -> Lock - ensures serialized access per gateway
         self._locks: Dict[Tuple[str, int], asyncio.Lock] = {}
         self._manager_lock = asyncio.Lock()
         
@@ -411,8 +413,16 @@ class ModbusClientManager:
                 recovery_timeout=float(settings.CIRCUIT_BREAKER_RECOVERY_TIMEOUT),
             )
         )
+        
+        # Validate for problematic configurations
+        self._validate_gateway_config()
 
     def _create_gateway(self, config: DeviceConfig) -> ModbusGateway:
+        """Create a gateway for a device.
+        
+        Note: Gateway is shared across all devices on the same host:port,
+        regardless of slave_id. Access is serialized via locks.
+        """
         return ModbusGateway(
             host=config.host,
             port=config.port,
@@ -422,18 +432,77 @@ class ModbusClientManager:
             retry_delay=config.retry_delay,
         )
 
+    def _validate_gateway_config(self) -> None:
+        """Check for problematic configurations across all devices.
+        
+        Validates:
+        - Multiple devices on same host:port with different slave_ids (allowed but warned)
+        - Duplicate (host, port, slave_id) combinations (error)
+        """
+        # Track (host, port, slave_id) -> list of device_ids
+        endpoint_map: Dict[Tuple[str, int, int], List[str]] = {}
+        # Track (host, port) -> list of device_ids for warnings
+        gateway_map: Dict[Tuple[str, int], List[str]] = {}
+        
+        for device_id, config in self._configs.items():
+            endpoint_key = (config.host, config.port, config.slave_id)
+            gateway_key = (config.host, config.port)
+            
+            if endpoint_key not in endpoint_map:
+                endpoint_map[endpoint_key] = []
+            endpoint_map[endpoint_key].append(device_id)
+            
+            if gateway_key not in gateway_map:
+                gateway_map[gateway_key] = []
+            gateway_map[gateway_key].append(device_id)
+        
+        # Check for duplicate endpoints (exact same host:port:slave_id)
+        duplicates = {key: devs for key, devs in endpoint_map.items() if len(devs) > 1}
+        if duplicates:
+            for (host, port, slave_id), device_ids in duplicates.items():
+                logger.error(
+                    "modbus_duplicate_endpoint_error",
+                    host=host,
+                    port=port,
+                    slave_id=slave_id,
+                    device_ids=device_ids,
+                    message=(
+                        f"CRITICAL: Multiple devices with identical endpoint: "
+                        f"{host}:{port} slave_id={slave_id} -> devices: {device_ids}"
+                    ),
+                )
+        
+        # Warn about shared gateways (multiple devices on same host:port)
+        shared_gateways = {key: devs for key, devs in gateway_map.items() if len(devs) > 1}
+        if shared_gateways:
+            for (host, port), device_ids in shared_gateways.items():
+                slave_ids = [self._configs[did].slave_id for did in device_ids]
+                logger.warning(
+                    "modbus_shared_gateway",
+                    host=host,
+                    port=port,
+                    device_ids=device_ids,
+                    slave_ids=slave_ids,
+                    message=(
+                        f"Multiple devices share gateway {host}:{port} - "
+                        f"polling will be serialized to prevent response mix-up. "
+                        f"Devices: {device_ids} (slave_ids: {slave_ids})"
+                    ),
+                )
+
     async def _get_gateway_and_lock(self, device_id: str) -> Tuple[ModbusGateway, asyncio.Lock]:
         config = self._configs.get(device_id)
         if not config:
             raise DeviceNotFoundError(f"Unknown device_id '{device_id}'")
         
-        key = (config.host, config.port)
+        # Key is (host, port) only - all devices on same gateway share connection
+        gateway_key = (config.host, config.port)
         
         async with self._manager_lock:
-            if key not in self._gateways:
-                self._gateways[key] = self._create_gateway(config)
-                self._locks[key] = asyncio.Lock()
-            return self._gateways[key], self._locks[key]
+            if gateway_key not in self._gateways:
+                self._gateways[gateway_key] = self._create_gateway(config)
+                self._locks[gateway_key] = asyncio.Lock()
+            return self._gateways[gateway_key], self._locks[gateway_key]
 
     async def _run_with_gateway(self, device_id: str, func_name: str, *args, **kwargs):
         """Execute a gateway method directly without circuit breaker.
@@ -551,19 +620,22 @@ class ModbusClientManager:
         
         This is useful when a connection becomes unresponsive.
         The next request will create a fresh connection.
+        
+        Note: Resets the entire gateway (host:port), not just one device.
         """
         config = self._configs.get(device_id)
         if not config:
             raise DeviceNotFoundError(f"Unknown device_id '{device_id}'")
         
-        key = (config.host, config.port)
+        # Key is (host, port) - resets the shared gateway
+        gateway_key = (config.host, config.port)
         
         async with self._manager_lock:
-            if key in self._gateways:
-                gateway = self._gateways[key]
+            if gateway_key in self._gateways:
+                gateway = self._gateways[gateway_key]
                 await asyncio.to_thread(gateway.close)
-                del self._gateways[key]
-                del self._locks[key]
+                del self._gateways[gateway_key]
+                del self._locks[gateway_key]
                 logger.info(
                     "modbus_gateway_reset",
                     device_id=device_id,
@@ -590,6 +662,10 @@ class ModbusClientManager:
         
         # Update configs
         self._configs = {cfg.device_id: cfg for cfg in new_configs}
+        
+        # Re-validate gateway config after reload
+        self._validate_gateway_config()
+        
         logger.info(
             "modbus_configs_reloaded",
             device_count=len(new_configs),
@@ -613,9 +689,19 @@ class ModbusClientManager:
         """Return status of all active gateways."""
         status_list = []
         for (host, port), gateway in self._gateways.items():
+            # Get all devices using this gateway
+            device_ids = [
+                dev_id for dev_id, cfg in self._configs.items()
+                if cfg.host == host and cfg.port == port
+            ]
+            slave_ids = [
+                self._configs[dev_id].slave_id for dev_id in device_ids
+            ]
             status_list.append({
                 "host": host,
                 "port": port,
+                "device_ids": device_ids,
+                "slave_ids": slave_ids,
                 "connected": gateway.is_connected(),
             })
         return status_list
