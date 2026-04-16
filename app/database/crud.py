@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import List, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -81,7 +81,7 @@ async def update_device(
         for key, value in update_data.items():
             setattr(device, key, value)
 
-        device.updated_at = datetime.now(timezone.utc)
+        device.updated_at = datetime.now()
         await session.commit()
         await session.refresh(device)
         logger.info(
@@ -111,7 +111,7 @@ async def delete_device(session: AsyncSession, device_id: str) -> bool:
             return False
 
         device.is_active = False
-        device.updated_at = datetime.now(timezone.utc)
+        device.updated_at = datetime.now()
         await session.commit()
         logger.info(
             "device_deleted",
@@ -139,7 +139,7 @@ async def activate_device(session: AsyncSession, device_id: str) -> bool:
             return False
 
         device.is_active = True
-        device.updated_at = datetime.now(timezone.utc)
+        device.updated_at = datetime.now()
         await session.commit()
         logger.info(
             "device_activated",
@@ -251,7 +251,7 @@ async def update_polling_target(
         for key, value in update_data.items():
             setattr(target, key, value)
 
-        target.updated_at = datetime.now(timezone.utc)
+        target.updated_at = datetime.now()
         await session.commit()
         await session.refresh(target)
         logger.info(
@@ -281,7 +281,7 @@ async def delete_polling_target(session: AsyncSession, target_id: int) -> bool:
             return False
 
         target.is_active = False
-        target.updated_at = datetime.now(timezone.utc)
+        target.updated_at = datetime.now()
         await session.commit()
         logger.info(
             "polling_target_deleted",
@@ -309,7 +309,7 @@ async def activate_polling_target(session: AsyncSession, target_id: int) -> bool
             return False
 
         target.is_active = True
-        target.updated_at = datetime.now(timezone.utc)
+        target.updated_at = datetime.now()
         await session.commit()
         logger.info(
             "polling_target_activated",

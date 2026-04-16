@@ -81,8 +81,8 @@ class ModbusDevice(SQLModel, table=True):
     max_retries: int = Field(default=5)
     retry_delay: float = Field(default=0.1)
     is_active: bool = Field(default=True, index=True)
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now())
+    updated_at: datetime = Field(default_factory=lambda: datetime.now())
 
 
 # Pydantic schemas for API
@@ -151,8 +151,8 @@ class PollingTarget(SQLModel, table=True):
     count: int = Field(default=1, ge=1, le=125)
     is_active: bool = Field(default=True, index=True)
     description: Optional[str] = Field(default=None, max_length=200)
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now())
+    updated_at: datetime = Field(default_factory=lambda: datetime.now())
 
 
 # Pydantic schemas for Polling API
