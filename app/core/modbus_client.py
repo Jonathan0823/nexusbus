@@ -225,8 +225,9 @@ class ModbusGateway:
                     response = read_method(
                         address=address, count=count, device_id=slave_id
                     )
-                    last_response = response
+                    # Only assign last_response after validation succeeds
                     if self._is_valid_response(response, op_name, slave_id):
+                        last_response = response
                         if attempt > 0:
                             logger.info(
                                 "modbus_read_success_after_retry",
@@ -314,7 +315,8 @@ class ModbusGateway:
             # This prevents response mix-up when multiple slave IDs share a connection
             self.close()
             
-            return last_response
+            # Return None - do not return potentially invalid last_response
+            return None
         finally:
             self._restore_timeout(orig_timeout)
 
@@ -342,9 +344,13 @@ class ModbusGateway:
                 response = self._client.write_register(
                     address=address, value=value, device_id=slave_id
                 )
-                last_response = response
+                # Only assign last_response after validation succeeds
                 if self._is_valid_response(response, "write_holding_register", slave_id):
+                    last_response = response
                     return response
+                else:
+                    # Invalid response - clear last_response
+                    last_response = None
             except (ModbusException, OSError) as exc:
                 logger.warning(
                     "modbus_write_exception",
@@ -370,7 +376,9 @@ class ModbusGateway:
                     max_attempts=self.max_retries,
                 )
                 time.sleep(self.retry_delay)
-        return last_response
+        
+        # Return None - do not return potentially invalid last_response
+        return None
 
     def is_connected(self) -> bool:
         return bool(self._client and self._client.is_socket_open())
@@ -648,6 +656,7 @@ class ModbusClientManager:
         """Reload device configurations dynamically.
         
         This closes connections for removed devices and updates the config map.
+        Also handles devices that moved to different host/port (stale gateway cleanup).
         """
         old_device_ids = set(self._configs.keys())
         new_device_ids = {cfg.device_id for cfg in new_configs}
@@ -659,6 +668,23 @@ class ModbusClientManager:
                 await self.reset_gateway(device_id)
             except DeviceNotFoundError:
                 pass  # Already removed
+        
+        # Check for devices that changed host/port (moved endpoints)
+        moved_devices: List[str] = []
+        for new_cfg in new_configs:
+            if new_cfg.device_id in self._configs:
+                old_cfg = self._configs[new_cfg.device_id]
+                old_endpoint = (old_cfg.host, old_cfg.port)
+                new_endpoint = (new_cfg.host, new_cfg.port)
+                if old_endpoint != new_endpoint:
+                    # Device moved to different endpoint - close old gateway
+                    old_gateway_key = old_endpoint
+                    if old_gateway_key in self._gateways:
+                        try:
+                            await self.reset_gateway(new_cfg.device_id)
+                            moved_devices.append(new_cfg.device_id)
+                        except DeviceNotFoundError:
+                            pass
         
         # Update configs
         self._configs = {cfg.device_id: cfg for cfg in new_configs}
