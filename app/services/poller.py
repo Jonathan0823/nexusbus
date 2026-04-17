@@ -9,6 +9,7 @@ from typing import Dict, List, Any, Set, Tuple
 
 
 from app.core.cache import RegisterCache
+from app.core.config import settings
 from app.core.logging_config import get_logger
 from app.core.modbus_client import ModbusClientManager, ModbusClientError, RegisterType
 from app.core.circuit_breaker import CircuitOpenError
@@ -142,27 +143,36 @@ async def _poll_single_target(
         if not isinstance(register_type, RegisterType):
             register_type = RegisterType(register_type)
 
-        # Read from Modbus device (fail fast, no retry here)
-        # Force retries=0 and timeout=1.0s to ensure fail-fast in polling loop
+        # Read from Modbus device using configurable timeout/retry
+        # Use settings for reliability (not too aggressive)
         data = await manager.read_registers(
             device_id=device_id,
             register_type=register_type,
             address=address,
             count=count,
-            retries=0,  # Fail fast!
-            timeout=1.0,  # Fast timeout for poller!
+            retries=settings.POLLING_RETRIES,
+            timeout=settings.POLLING_TIMEOUT_SECONDS,
         )
 
         # Store in cache
         await cache.set(device_id, register_type, address, count, data)
 
+        # Get device config for enhanced logging
+        config = manager.get_config(device_id)
+        slave_id = config.slave_id if config else None
+        host_port = f"{config.host}:{config.port}" if config else None
+
         logger.info(
             "polling_target_success",
             device_id=device_id,
+            slave_id=slave_id,
+            host_port=host_port,
             register_type=register_type.value,
             address=address,
             count=count,
             values_count=len(data),
+            timeout_seconds=settings.POLLING_TIMEOUT_SECONDS,
+            retries=settings.POLLING_RETRIES,
             message="Successfully polled target",
         )
 
@@ -203,29 +213,68 @@ async def _poll_single_target(
     except (ModbusClientError, ConnectionError, ConnectionResetError, OSError) as exc:
         # Connection error - log briefly and skip, will retry next cycle
         # Includes ConnectionResetError and OSError for Windows-specific socket errors
+        device_id = target.get("device_id")
+        
+        # Get device config for enhanced logging
+        config = manager.get_config(device_id)
+        slave_id = config.slave_id if config else None
+        host_port = f"{config.host}:{config.port}" if config else None
+        
         error_msg = (
-            f"✗ Poll failed: {target.get('device_id')} "
+            f"Poll failed: {device_id} "
             f"{target.get('register_type')} addr={target.get('address')} - "
             f"will retry next cycle: {exc}"
         )
         logger.warning(
             "polling_target_failed",
-            device_id=target.get("device_id"),
+            device_id=device_id,
+            slave_id=slave_id,
+            host_port=host_port,
             register_type=target.get("register_type"),
             address=target.get("address"),
             error=str(exc),
             error_type=type(exc).__name__,
+            timeout_seconds=settings.POLLING_TIMEOUT_SECONDS,
+            retries=settings.POLLING_RETRIES,
             message="Poll failed, will retry next cycle",
         )
+        # Reset gateway after failure to prevent stale connection from affecting next device
+        try:
+            await manager.reset_gateway(device_id)
+            logger.debug(
+                "polling_gateway_reset_after_failure",
+                device_id=device_id,
+                host_port=host_port,
+                message="Gateway reset after poll failure",
+            )
+        except Exception as reset_err:
+            logger.warning(
+                "polling_gateway_reset_failed",
+                device_id=device_id,
+                host_port=host_port,
+                error=str(reset_err),
+                message="Failed to reset gateway after failure",
+            )
         return (False, error_msg)
 
     except CircuitOpenError as exc:
         # Circuit breaker is open - skip silently, will retry after recovery timeout
-        error_msg = f"⚡ Circuit OPEN: {exc.device_id} - skip for {exc.time_until_retry:.1f}s"
+        device_id = exc.device_id
+        
+        # Get device config for enhanced logging
+        config = manager.get_config(device_id)
+        slave_id = config.slave_id if config else None
+        host_port = f"{config.host}:{config.port}" if config else None
+        
+        error_msg = f"Circuit OPEN: {device_id} - skip for {exc.time_until_retry:.1f}s"
         logger.debug(
             "polling_target_circuit_open",
-            device_id=exc.device_id,
+            device_id=device_id,
+            slave_id=slave_id,
+            host_port=host_port,
             time_until_retry=round(exc.time_until_retry, 1),
+            circuit_breaker_threshold=settings.CIRCUIT_BREAKER_FAILURE_THRESHOLD,
+            circuit_breaker_recovery_timeout=settings.CIRCUIT_BREAKER_RECOVERY_TIMEOUT,
             message="Device circuit breaker is open, skipping",
         )
         return (False, error_msg)
@@ -367,7 +416,7 @@ async def poll_registers(
                 success_count = 0
                 failure_count = 0
                 
-                for target in group_targets:
+                for i, target in enumerate(group_targets):
                     result = await _poll_single_target(target, manager, cache, mqtt_manager)
                     if isinstance(result, tuple):
                         success, _ = result
@@ -377,6 +426,11 @@ async def poll_registers(
                             failure_count += 1
                     else:
                         failure_count += 1
+                    
+                    # Add small delay between sequential reads on same gateway
+                    # This gives the device time to prepare for the next request
+                    if i < len(group_targets) - 1:
+                        await asyncio.sleep(settings.POLLING_RETRY_DELAY)
                 
                 return success_count, failure_count
 
