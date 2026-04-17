@@ -30,6 +30,12 @@ class Settings(BaseSettings):
     APP_VERSION: str = "0.1.0"
     POLL_INTERVAL_SECONDS: int = 5
     CACHE_TTL_SECONDS: int = 300  # Cache entries expire after 5 minutes
+
+    # Polling settings
+    POLLING_TIMEOUT_SECONDS: float = 2.0  # Timeout for polling reads (faster than API's 5s but not too aggressive)
+    POLLING_RETRIES: int = 1  # Retries for polling (at least 1 for reliability)
+    POLLING_RETRY_DELAY: float = 0.1  # Delay between retries in polling (seconds)
+    POLLING_TARGET_COOLDOWN: int = 60  # Skip offline device for 60 seconds after threshold failures
     
     # Logging configuration
     LOG_LEVEL: str = "INFO"
