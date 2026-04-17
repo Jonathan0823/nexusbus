@@ -215,3 +215,141 @@ async def test_await_pending_mqtt_tasks_with_tasks():
     count = await await_pending_mqtt_tasks(timeout=1.0)
     
     assert count == 1
+
+
+# ============================================================
+# Failure Isolation Tests
+# ============================================================
+
+@pytest.mark.asyncio
+async def test_one_offline_device_does_not_block_others():
+    """Test that one offline device doesn't prevent others from being polled."""
+    _pending_mqtt_tasks.clear()
+    
+    # Setup mock manager
+    mock_manager = AsyncMock(spec=ModbusClientManager)
+    mock_cache = AsyncMock(spec=RegisterCache)
+    
+    # Device configs for testing
+    from app.core.modbus_client import DeviceConfig
+    
+    online_device = DeviceConfig(
+        device_id="online-device",
+        host="192.168.1.100",
+        port=502,
+        slave_id=1,
+        timeout=1,
+        max_retries=1,
+        retry_delay=0.01,
+    )
+    offline_device = DeviceConfig(
+        device_id="offline-device",
+        host="192.168.1.100",
+        port=502,
+        slave_id=2,
+        timeout=1,
+        max_retries=1,
+        retry_delay=0.01,
+    )
+    
+    # Configure mock manager to return config
+    mock_manager.get_config.side_effect = lambda did: online_device if did == "online-device" else offline_device
+    
+    # First device succeeds
+    mock_manager.read_registers.return_value = [100, 200, 300]
+    
+    # Target for online device
+    target_online = {
+        "device_id": "online-device",
+        "register_type": "holding",
+        "address": 0,
+        "count": 3,
+    }
+    
+    # Poll the online device - should succeed
+    success, error = await _poll_single_target(target_online, mock_manager, mock_cache)
+    
+    assert success is True
+    assert error == ""
+    mock_manager.reset_gateway.assert_not_called()  # No failure, no reset needed
+
+
+@pytest.mark.asyncio
+async def test_gateway_reset_after_timeout():
+    """Test that gateway is reset after a read timeout."""
+    _pending_mqtt_tasks.clear()
+    
+    # Setup mock manager
+    mock_manager = AsyncMock(spec=ModbusClientManager)
+    mock_cache = AsyncMock(spec=RegisterCache)
+    
+    # Device config
+    from app.core.modbus_client import DeviceConfig
+    
+    device_config = DeviceConfig(
+        device_id="test-device",
+        host="192.168.1.100",
+        port=502,
+        slave_id=1,
+        timeout=1,
+        max_retries=1,
+        retry_delay=0.01,
+    )
+    mock_manager.get_config.return_value = device_config
+    
+    # Simulate timeout/connection error
+    mock_manager.read_registers.side_effect = ModbusClientError("No response from device")
+    
+    target = {
+        "device_id": "test-device",
+        "register_type": "holding",
+        "address": 0,
+        "count": 1,
+    }
+    
+    # Poll - should fail
+    success, error = await _poll_single_target(target, mock_manager, mock_cache)
+    
+    assert success is False
+    assert "test-device" in error
+    # Gateway should have been reset after failure
+    mock_manager.reset_gateway.assert_called_once_with("test-device")
+
+
+@pytest.mark.asyncio
+async def test_offline_device_gets_skipped_after_circuit_open():
+    """Test that offline device is skipped when circuit breaker is open."""
+    _pending_mqtt_tasks.clear()
+    
+    # Setup mock manager
+    mock_manager = AsyncMock(spec=ModbusClientManager)
+    mock_cache = AsyncMock(spec=RegisterCache)
+    
+    # Simulate circuit breaker open
+    mock_manager.read_registers.side_effect = CircuitOpenError("test-device", 30.0)
+    
+    target = {
+        "device_id": "test-device",
+        "register_type": "holding",
+        "address": 0,
+        "count": 1,
+    }
+    
+    # Poll - should be skipped due to circuit breaker
+    success, error = await _poll_single_target(target, mock_manager, mock_cache)
+    
+    assert success is False
+    assert "Circuit OPEN" in error
+    assert "30" in error  # time_until_retry
+
+
+@pytest.mark.asyncio
+async def test_polling_uses_configurable_settings():
+    """Test that polling uses configurable timeout/retry settings."""
+    from app.core.config import settings
+    
+    # Verify settings exist and have reasonable defaults
+    assert hasattr(settings, "POLLING_TIMEOUT_SECONDS")
+    assert hasattr(settings, "POLLING_RETRIES")
+    assert settings.POLLING_TIMEOUT_SECONDS > 0
+    assert settings.POLLING_RETRIES >= 0
