@@ -245,7 +245,7 @@ class AsyncModbusGateway:
                                 self._client.timeout = timeout
                 except (ModbusException, ModbusIOException, OSError) as exc:
                     last_exception = exc
-                    logger.warning(
+                    logger.debug(
                         "modbus_read_exception",
                         operation=op_name,
                         slave_id=slave_id,
@@ -295,7 +295,7 @@ class AsyncModbusGateway:
                     )
                     await asyncio.sleep(self.retry_delay)
 
-            logger.error(
+            logger.debug(
                 "modbus_read_failed",
                 operation=op_name,
                 slave_id=slave_id,
@@ -676,7 +676,7 @@ class ModbusClientManager:
             # CRITICAL: Reset gateway on failure to clear stale buffer
             # This prevents one bad device from poisoning other devices on shared gateway
             if "No response from device" in failure_reason or "ModbusIOException" in failure_reason:
-                logger.warning(
+                logger.debug(
                     "device_failure_gateway_reset",
                     device_id=device_id,
                     failure_reason=failure_reason,
