@@ -58,13 +58,8 @@ def _suppress_connection_errors(loop, context):
     loop.default_exception_handler(context)
 
 
-# Install custom exception handler
-try:
-    loop = asyncio.get_event_loop()
-    loop.set_exception_handler(_suppress_connection_errors)
-except RuntimeError:
-    # No event loop running yet, will be set when app starts
-    pass
+# Install custom exception handler (set during lifespan startup)
+_loop_exc_handler_installed = False
 
 
 @asynccontextmanager
@@ -73,6 +68,8 @@ async def lifespan(app: FastAPI):
     Lifespan context manager for the FastAPI application.
     Handles startup and shutdown logic.
     """
+    global _loop_exc_handler_installed
+    
     # --- STARTUP LOGIC ---
     logger.info(
         "app_starting",
@@ -80,6 +77,15 @@ async def lifespan(app: FastAPI):
         app_version=settings.APP_VERSION,
         message="Starting Modbus middleware service",
     )
+
+    # Install custom exception handler (avoid "no current event loop" warning)
+    if not _loop_exc_handler_installed:
+        try:
+            loop = asyncio.get_running_loop()
+            loop.set_exception_handler(_suppress_connection_errors)
+            _loop_exc_handler_installed = True
+        except RuntimeError:
+            pass
 
     # Initialize database
     try:
