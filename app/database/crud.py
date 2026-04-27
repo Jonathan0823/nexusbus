@@ -14,6 +14,8 @@ from app.database.models import (
     ModbusDeviceUpdate,
     PollingTarget,
     PollingTargetUpdate,
+    DeviceHealth,
+    DeviceState,
 )
 
 logger = get_logger(__name__)
@@ -326,4 +328,179 @@ async def activate_polling_target(session: AsyncSession, target_id: int) -> bool
             error_type=type(e).__name__,
             message="Failed to activate polling target",
         )
-        raise
+
+
+# =============================================================================
+# Device Health CRUD
+# =============================================================================
+
+async def get_device_health(session: AsyncSession, device_id: str) -> Optional[DeviceHealth]:
+    """Get device health for a specific device."""
+    result = await session.execute(
+        select(DeviceHealth).where(DeviceHealth.device_id == device_id)
+    )
+    return result.scalar_one_or_none()
+
+
+async def get_all_device_health(session: AsyncSession) -> List[DeviceHealth]:
+    """Get health for all devices."""
+    result = await session.execute(select(DeviceHealth))
+    return list(result.scalars().all())
+
+
+async def get_active_device_health(session: AsyncSession) -> List[DeviceHealth]:
+    """Get health for devices that have a health record."""
+    result = await session.execute(
+        select(DeviceHealth).where(DeviceHealth.state != DeviceState.OFFLINE)
+    )
+    return list(result.scalars().all())
+
+
+async def upsert_device_health(
+    session: AsyncSession,
+    device_id: str,
+    state: DeviceState = DeviceState.HEALTHY,
+) -> DeviceHealth:
+    """Create or update device health record."""
+    health = await get_device_health(session, device_id)
+    now = datetime.now()
+    
+    if health:
+        health.state = state
+        health.updated_at = now
+    else:
+        health = DeviceHealth(
+            device_id=device_id,
+            state=state,
+            created_at=now,
+            updated_at=now,
+        )
+        session.add(health)
+    
+    await session.commit()
+    await session.refresh(health)
+    return health
+
+
+async def record_device_success(session: AsyncSession, device_id: str) -> Optional[DeviceHealth]:
+    """Record a successful read for a device."""
+    health = await get_device_health(session, device_id)
+    now = datetime.now()
+    
+    if not health:
+        health = DeviceHealth(
+            device_id=device_id,
+            state=DeviceState.HEALTHY,
+            success_count=1,
+            last_success=now,
+            created_at=now,
+            updated_at=now,
+        )
+        session.add(health)
+    else:
+        health.success_count += 1
+        health.consecutive_failures = 0
+        health.last_success = now
+        health.quarantine_until = None  # Clear quarantine on success
+        health.updated_at = now
+        
+        # Upgrade state if recovering
+        if health.state == DeviceState.OFFLINE:
+            health.state = DeviceState.DEGRADED
+        elif health.state == DeviceState.DEGRADED:
+            health.state = DeviceState.HEALTHY
+    
+    await session.commit()
+    await session.refresh(health)
+    return health
+
+
+async def record_device_failure(session: AsyncSession, device_id: str) -> Optional[DeviceHealth]:
+    """Record a failed read for a device.
+    
+    Sets quarantine_until with backoff:
+    - 1st fail: 15s
+    - 2nd: 30s
+    - 3rd: 60s
+    - cap at 300s (5 minutes)
+    """
+    health = await get_device_health(session, device_id)
+    now = datetime.now()
+    
+    if not health:
+        health = DeviceHealth(
+            device_id=device_id,
+            state=DeviceState.DEGRADED,
+            failure_count=1,
+            consecutive_failures=1,
+            last_failure=now,
+            quarantine_until=now,  # immediate quarantine on first failure
+            created_at=now,
+            updated_at=now,
+        )
+        session.add(health)
+    else:
+        health.failure_count += 1
+        health.consecutive_failures += 1
+        health.last_failure = now
+        health.updated_at = now
+        
+        # Calculate quarantine backoff
+        # 1st fail = 15s, 2nd = 30s, 3rd = 60s, cap at 300s
+        consecutive = health.consecutive_failures
+        backoff_seconds = min(15 * (2 ** (consecutive - 1)), 300)  # 15, 30, 60, 120, 240, 300...
+        health.quarantine_until = datetime.fromtimestamp(now.timestamp() + backoff_seconds)
+        
+        logger.info(
+            "device_quarantine_set",
+            device_id=device_id,
+            consecutive_failures=consecutive,
+            quarantine_seconds=backoff_seconds,
+            message=f"Device quarantined for {backoff_seconds}s after {consecutive} failures",
+        )
+        
+        # Downgrade state based on consecutive failures
+        if health.consecutive_failures >= 10:
+            health.state = DeviceState.OFFLINE
+        elif health.consecutive_failures >= 3:
+            health.state = DeviceState.DEGRADED
+    
+    await session.commit()
+    await session.refresh(health)
+    return health
+
+
+async def reset_device_health(session: AsyncSession, device_id: str) -> bool:
+    """Reset device health to healthy state."""
+    health = await get_device_health(session, device_id)
+    if not health:
+        return False
+    
+    health.state = DeviceState.HEALTHY
+    health.consecutive_failures = 0
+    health.quarantine_until = None
+    health.updated_at = datetime.now()
+    
+    await session.commit()
+    await session.refresh(health)
+    return True
+
+
+async def is_device_quarantined(session: AsyncSession, device_id: str) -> bool:
+    """Check if a device is currently quarantined."""
+    health = await get_device_health(session, device_id)
+    if not health or not health.quarantine_until:
+        return False
+    return datetime.now() < health.quarantine_until
+
+
+async def get_all_quarantined_devices(session: AsyncSession) -> List[str]:
+    """Get list of device IDs that are currently quarantined."""
+    from app.database.models import DeviceHealth
+    result = await session.execute(
+        select(DeviceHealth).where(
+            DeviceHealth.quarantine_until != None,
+            DeviceHealth.quarantine_until > datetime.now()
+        )
+    )
+    return [h.device_id for h in result.scalars().all()]

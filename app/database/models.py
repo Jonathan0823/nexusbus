@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from enum import Enum
 from typing import Optional, Tuple
 
 from pydantic import field_validator
@@ -198,5 +199,53 @@ class PollingTargetResponse(SQLModel):
     count: int
     is_active: bool
     description: Optional[str]
+    created_at: datetime
+    updated_at: datetime
+
+
+# =============================================================================
+# Device Health Tracking
+# =============================================================================
+
+class DeviceState(str, Enum):
+    """Device health states."""
+    
+    HEALTHY = "healthy"      # Device responding normally
+    DEGRADED = "degraded"   # Some failures, but still responding
+    OFFLINE = "offline"     # Device not responding
+
+
+class DeviceHealth(SQLModel, table=True):
+    """Track device health and failure metrics.
+    
+    This prevents one bad device from poisoning other devices on a shared gateway
+    by tracking failures and triggering gateway resets on failure.
+    """
+    
+    __tablename__ = "device_health"
+    
+    device_id: str = Field(primary_key=True, max_length=50, foreign_key="modbus_devices.device_id")
+    state: DeviceState = Field(default=DeviceState.HEALTHY, index=True)
+    failure_count: int = Field(default=0)  # Total failures since last reset
+    consecutive_failures: int = Field(default=0)  # Immediate consecutive failures
+    success_count: int = Field(default=0)  # Total successful reads
+    last_success: Optional[datetime] = Field(default=None)
+    last_failure: Optional[datetime] = Field(default=None)
+    quarantine_until: Optional[datetime] = Field(default=None, index=True)  # Time until this device can be polled again
+    created_at: datetime = Field(default_factory=lambda: datetime.now())
+    updated_at: datetime = Field(default_factory=lambda: datetime.now())
+
+
+class DeviceHealthResponse(SQLModel):
+    """Schema for device health API responses."""
+    
+    device_id: str
+    state: DeviceState
+    failure_count: int
+    consecutive_failures: int
+    success_count: int
+    last_success: Optional[datetime]
+    last_failure: Optional[datetime]
+    quarantine_until: Optional[datetime]
     created_at: datetime
     updated_at: datetime
