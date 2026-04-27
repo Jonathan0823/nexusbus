@@ -109,7 +109,7 @@ async def lifespan(app: FastAPI):
         device_configs = DEVICE_CONFIGS
 
     # Initialize Modbus manager with loaded configs
-    app.state.modbus_manager = ModbusClientManager(device_configs)
+    app.state.modbus_manager = ModbusClientManager(device_configs, async_session_maker)
     app.state.register_cache = RegisterCache()
 
     # Start MQTT Client
@@ -149,19 +149,33 @@ async def lifespan(app: FastAPI):
             await poller_task
         logger.debug("poller_task_cancelled", message="Polling task cancelled")
 
+    # Close Modbus connections with timeout - prevents hang on Ctrl+C
     manager: ModbusClientManager = app.state.modbus_manager
-    await manager.close_all()
-    logger.debug("modbus_gateways_closed", message="All Modbus gateways closed")
+    try:
+        await asyncio.wait_for(manager.close_all(), timeout=2.0)
+        logger.debug("modbus_gateways_closed", message="All Modbus gateways closed")
+    except asyncio.TimeoutError:
+        logger.warning("modbus_close_timeout", message="Modbus close timed out, forcing exit")
+        # Force clear even if timeout
+        manager._gateways.clear()
+        manager._locks.clear()
 
     # Stop MQTT Client
     # First, await any pending MQTT publish tasks
     from app.services.poller import await_pending_mqtt_tasks
-    await await_pending_mqtt_tasks(timeout=5.0)
-    
+    try:
+        await asyncio.wait_for(await_pending_mqtt_tasks(timeout=2.0), timeout=3.0)
+    except asyncio.TimeoutError:
+        logger.warning("mqtt_pending_timeout", message="Awaiting MQTT tasks timed out")
+
     mqtt_manager_inst = getattr(app.state, "mqtt_manager", None)
     if mqtt_manager_inst:
-        await mqtt_manager_inst.stop()
-        logger.debug("mqtt_stopped", message="MQTT client stopped")
+        try:
+            # MQTT disconnect can hang - wrap with timeout
+            await asyncio.wait_for(mqtt_manager_inst.stop(), timeout=2.0)
+            logger.debug("mqtt_stopped", message="MQTT client stopped")
+        except asyncio.TimeoutError:
+            logger.warning("mqtt_disconnect_timeout", message="MQTT disconnect timed out")
 
     cache: RegisterCache = app.state.register_cache
     await cache.clear()
