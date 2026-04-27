@@ -87,13 +87,36 @@ async def await_pending_mqtt_tasks(timeout: float = 5.0) -> int:
     return len(done)
 
 async def load_polling_targets_from_db() -> List[dict]:
-    """Load active polling targets from database."""
+    """Load active polling targets from database, sorted by device health.
+    
+    Healthy devices are polled first, quarantined devices last.
+    """
+    from datetime import datetime, timezone
+    
     try:
         async with async_session_maker() as session:
             targets = await crud.get_all_active_polling_targets(session)
-
-            # Convert to dict format expected by polling loop
-            return [
+            all_health = await crud.get_all_device_health(session)
+            
+            # Build health lookup: device_id -> health dict
+            health_lookup = {}
+            now = datetime.now(timezone.utc)  # Use UTC for consistency
+            for h in all_health:
+                is_quarantined = False
+                if h.quarantine_until:
+                    # Ensure both are timezone-aware for comparison
+                    q_time = h.quarantine_until
+                    if q_time.tzinfo is None:
+                        q_time = q_time.replace(tzinfo=timezone.utc)
+                    is_quarantined = q_time > now
+                health_lookup[h.device_id] = {
+                    "state": h.state.value if h.state else "healthy",
+                    "consecutive_failures": h.consecutive_failures or 0,
+                    "is_quarantined": is_quarantined,
+                }
+            
+            # Convert to dict with health info
+            target_list = [
                 {
                     "id": target.id,
                     "device_id": target.device_id,
@@ -101,9 +124,47 @@ async def load_polling_targets_from_db() -> List[dict]:
                     "address": target.address,
                     "count": target.count,
                     "description": target.description,
+                    "_health": health_lookup.get(target.device_id, {
+                        "state": "healthy",
+                        "consecutive_failures": 0,
+                        "is_quarantined": False,
+                    }),
                 }
                 for target in targets
             ]
+
+            # Hard quarantine: skip devices currently in cooldown entirely.
+            # This prevents repeated attempts and log spam from a known-bad device.
+            skipped_quarantined = [
+                t["device_id"] for t in target_list if t["_health"]["is_quarantined"]
+            ]
+            target_list = [
+                t for t in target_list if not t["_health"]["is_quarantined"]
+            ]
+            
+            # Sort by health: healthy first, then by consecutive failures (low to high), quarantined last
+            # Sort key: (is_quarantined, state_priority, consecutive_failures)
+            # state_priority: healthy=0, degraded=1, offline=2
+            state_priority = {"healthy": 0, "degraded": 1, "offline": 2}
+            
+            def sort_key(t):
+                health = t["_health"]
+                is_quar = 1 if health["is_quarantined"] else 0
+                state_prio = state_priority.get(health["state"], 0)
+                failures = health["consecutive_failures"]
+                return (is_quar, state_prio, failures)
+            
+            target_list.sort(key=sort_key)
+            
+            logger.debug(
+                "polling_targets_loaded",
+                target_count=len(target_list),
+                skipped_quarantined=skipped_quarantined,
+                sorted_order=[t["device_id"] for t in target_list],
+                message="Polling targets loaded and sorted by health",
+            )
+            
+            return target_list
     except Exception as e:
         logger.error(
             "polling_load_targets_failed",
