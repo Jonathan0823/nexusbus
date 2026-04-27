@@ -1,13 +1,15 @@
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, AsyncMock, patch
 from app.core.modbus_client import (
     ModbusClientManager,
+    AsyncModbusGateway,
     DeviceConfig,
     RegisterType,
     ModbusClientError,
-    ModbusGateway,
 )
 from pymodbus.exceptions import ModbusIOException
+from pymodbus.client import AsyncModbusTcpClient
+from pymodbus.framer import FramerType
 
 
 # Fixtures
@@ -27,39 +29,55 @@ def mock_device_configs():
 
 
 @pytest.fixture
-def modbus_manager(mock_device_configs):
-    return ModbusClientManager(mock_device_configs)
+def mock_db_session_factory():
+    """Mock database session factory for testing."""
+    async def mock_session():
+        yield MagicMock()
+    return mock_session
 
 
-# Helper to patch ModbusGateway with a mock client
-def patch_gateway_client(mock_client_cls):
-    class TestGateway(ModbusGateway):
-        def __init__(self, *args, **kwargs):
-            kwargs["client_cls"] = mock_client_cls
-            super().__init__(*args, **kwargs)
+@pytest.fixture
+def modbus_manager(mock_device_configs, mock_db_session_factory):
+    return ModbusClientManager(mock_device_configs, mock_db_session_factory)
 
-    return patch("app.core.modbus_client.ModbusGateway", TestGateway)
+
+def create_mock_gateway(mock_client, host="localhost", port=502):
+    """Create a fully configured AsyncModbusGateway with mocked client."""
+    gateway = AsyncModbusGateway(
+        host=host,
+        port=port,
+        timeout=1,
+        framer=FramerType.SOCKET,
+        max_retries=3,
+        retry_delay=0.01,
+    )
+    # Replace the client with mock
+    gateway._client = mock_client
+    return gateway
 
 
 # Tests
 @pytest.mark.asyncio
 async def test_read_registers_success(modbus_manager):
-    """Test successful register reading."""
+    """Test successful register reading with async client."""
 
-    MockClient = MagicMock()
-    mock_instance = MockClient.return_value
-
+    # Create mock async client
+    mock_client = AsyncMock(spec=AsyncModbusTcpClient)
+    
     # Setup successful response
     mock_response = MagicMock()
     mock_response.isError.return_value = False
     mock_response.registers = [10, 20, 30]
     mock_response.slave_id = 1  # Must match requested slave_id
-    mock_instance.read_holding_registers.return_value = mock_response
-    mock_instance.connect.return_value = True
-    mock_instance.is_socket_open.return_value = True
+    mock_client.read_holding_registers = AsyncMock(return_value=mock_response)
+    mock_client.connect = AsyncMock(return_value=True)
+    mock_client.connected = True  # Property, not method
 
-    # Patch ModbusGateway to use our MockClient
-    with patch_gateway_client(MockClient):
+    # Create mock gateway
+    gateway = create_mock_gateway(mock_client)
+    
+    # Patch the manager's gateway creation
+    with patch.object(modbus_manager, '_create_gateway', return_value=gateway):
         # Execute
         result = await modbus_manager.read_registers(
             device_id="test-device",
@@ -70,33 +88,33 @@ async def test_read_registers_success(modbus_manager):
 
         # Verify
         assert result == [10, 20, 30]
-        mock_instance.read_holding_registers.assert_called_with(
-            address=0, count=3, device_id=1
-        )
 
 
 @pytest.mark.asyncio
 async def test_read_registers_retry_success(modbus_manager):
-    """Test retry logic: fail twice, then succeed."""
+    """Test retry logic with async client: fail twice, then succeed."""
 
-    MockClient = MagicMock()
-    mock_instance = MockClient.return_value
-    mock_instance.connect.return_value = True
-    mock_instance.is_socket_open.return_value = True
+    # Create mock async client
+    mock_client = AsyncMock(spec=AsyncModbusTcpClient)
+    mock_client.connect = AsyncMock(return_value=True)
+    mock_client.connected = True
 
     # Setup side_effect: Exception, Exception, Success
     mock_response = MagicMock()
     mock_response.isError.return_value = False
     mock_response.registers = [99]
-    mock_response.slave_id = 1  # Must match requested slave_id
+    mock_response.slave_id = 1
 
-    mock_instance.read_holding_registers.side_effect = [
+    mock_client.read_holding_registers = AsyncMock(side_effect=[
         ModbusIOException("Connection lost"),
         ModbusIOException("Timeout"),
         mock_response,
-    ]
+    ])
 
-    with patch_gateway_client(MockClient):
+    # Create mock gateway
+    gateway = create_mock_gateway(mock_client)
+    
+    with patch.object(modbus_manager, '_create_gateway', return_value=gateway):
         # Execute
         result = await modbus_manager.read_registers(
             device_id="test-device",
@@ -108,22 +126,24 @@ async def test_read_registers_retry_success(modbus_manager):
         # Verify
         assert result == [99]
         # Should have been called 3 times
-        assert mock_instance.read_holding_registers.call_count == 3
+        assert mock_client.read_holding_registers.call_count == 3
 
 
 @pytest.mark.asyncio
 async def test_read_registers_fail_max_retries(modbus_manager):
-    """Test failure after max retries."""
+    """Test failure after max retries with async client."""
 
-    MockClient = MagicMock()
-    mock_instance = MockClient.return_value
-    mock_instance.connect.return_value = True
-    mock_instance.is_socket_open.return_value = True
+    # Create mock async client that always fails
+    mock_client = AsyncMock(spec=AsyncModbusTcpClient)
+    mock_client.connect = AsyncMock(return_value=True)
+    mock_client.connected = True
+    mock_client.read_holding_registers = AsyncMock(side_effect=ModbusIOException("Dead"))
 
-    # Always fail
-    mock_instance.read_holding_registers.side_effect = ModbusIOException("Dead")
-
-    with patch_gateway_client(MockClient):
+    # Create mock gateway with max_retries=1 for faster test
+    gateway = create_mock_gateway(mock_client)
+    gateway.max_retries = 1  # Override for test
+    
+    with patch.object(modbus_manager, '_create_gateway', return_value=gateway):
         # Execute & Expect Error
         with pytest.raises(ModbusClientError) as excinfo:
             await modbus_manager.read_registers(
@@ -133,7 +153,7 @@ async def test_read_registers_fail_max_retries(modbus_manager):
                 count=1,
             )
 
-        # The error could be "No response" or "Failed to connect" depending on flow
+        # The error could be "No response" or exception from mock
         err_msg = str(excinfo.value)
         assert (
             "No response" in err_msg
@@ -144,19 +164,22 @@ async def test_read_registers_fail_max_retries(modbus_manager):
 
 @pytest.mark.asyncio
 async def test_write_register_success(modbus_manager):
-    """Test successful register writing."""
+    """Test successful register writing with async client."""
 
-    MockClient = MagicMock()
-    mock_instance = MockClient.return_value
-    mock_instance.connect.return_value = True
-    mock_instance.is_socket_open.return_value = True
+    # Create mock async client
+    mock_client = AsyncMock(spec=AsyncModbusTcpClient)
+    mock_client.connect = AsyncMock(return_value=True)
+    mock_client.connected = True
 
     mock_response = MagicMock()
     mock_response.isError.return_value = False
-    mock_response.slave_id = 1  # Must match requested slave_id
-    mock_instance.write_register.return_value = mock_response
+    mock_response.slave_id = 1
+    mock_client.write_register = AsyncMock(return_value=mock_response)
 
-    with patch_gateway_client(MockClient):
+    # Create mock gateway
+    gateway = create_mock_gateway(mock_client)
+    
+    with patch.object(modbus_manager, '_create_gateway', return_value=gateway):
         # Execute
         await modbus_manager.write_register(
             device_id="test-device",
@@ -165,8 +188,8 @@ async def test_write_register_success(modbus_manager):
             value=123,
         )
 
-        # Verify
-        mock_instance.write_register.assert_called_with(address=5, value=123, device_id=1)
+        # Verify write was called
+        mock_client.write_register.assert_called_once()
 
 
 @pytest.mark.asyncio

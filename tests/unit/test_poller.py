@@ -36,12 +36,13 @@ async def test_load_polling_targets_success():
         
         with patch("app.services.poller.crud.get_all_active_polling_targets", 
                    new=AsyncMock(return_value=[mock_target])):
-            
-            targets = await load_polling_targets_from_db()
-            
-            assert len(targets) == 1
-            assert targets[0]["device_id"] == "plc-1"
-            assert targets[0]["address"] == 100
+            with patch("app.services.poller.crud.get_all_device_health",
+                       new=AsyncMock(return_value=[])):
+                targets = await load_polling_targets_from_db()
+                
+                assert len(targets) == 1
+                assert targets[0]["device_id"] == "plc-1"
+                assert targets[0]["address"] == 100
 
 
 @pytest.mark.asyncio
