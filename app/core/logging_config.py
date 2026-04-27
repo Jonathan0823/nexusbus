@@ -45,8 +45,10 @@ def setup_logging(
     )
     
     # Silence noisy third-party loggers
-    logging.getLogger("pymodbus").setLevel(logging.WARNING)
-    logging.getLogger("pymodbus.logging").setLevel(logging.WARNING)
+    # Pymodbus can emit very chatty frame-level noise for malformed/stale RTU data.
+    logging.getLogger("pymodbus").setLevel(logging.CRITICAL)
+    logging.getLogger("pymodbus.logging").setLevel(logging.CRITICAL)
+    logging.getLogger("pymodbus.transport").setLevel(logging.CRITICAL)
     
     # Build processors list
     processors: list[Processor] = [
@@ -96,4 +98,3 @@ def get_logger(name: str) -> structlog.stdlib.BoundLogger:
         logger.info("user_login", user_id=123, ip_address="192.168.1.1")
     """
     return structlog.get_logger(name)
-
