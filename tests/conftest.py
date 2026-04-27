@@ -5,12 +5,21 @@ from main import app
 
 
 # Configure pytest-asyncio to treat all async tests as asyncio-driven
+import asyncio
+import pytest
+import warnings
+
+
+# Suppress RuntimeWarning from unittest.mock in Python 3.12+
+# (unrelated to our code, known issue with AsyncMock in pytest-asyncio)
+pytest.mark.filterwarnings("ignore::RuntimeWarning")
+
+
 @pytest.fixture(scope="session")
 def event_loop():
     """Create an instance of the default event loop for each test case."""
-    import asyncio
-
-    loop = asyncio.get_event_loop_policy().new_event_loop()
+    policy = asyncio.get_event_loop_policy()
+    loop = policy.new_event_loop()
     yield loop
     loop.close()
 

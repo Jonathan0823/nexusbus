@@ -108,11 +108,8 @@ async def test_poll_single_target_success(mock_manager, mock_cache):
 
 
 @pytest.mark.asyncio
-async def test_poll_single_target_invalid_config():
+async def test_poll_single_target_invalid_config(mock_manager, mock_cache):
     """Test handling of invalid target configuration."""
-    mock_manager = AsyncMock()
-    mock_cache = AsyncMock()
-    
     target = {
         # Missing required fields
         "device_id": "plc-1",
