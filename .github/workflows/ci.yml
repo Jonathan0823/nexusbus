@@ -42,6 +42,18 @@ jobs:
         with:
           context: .
           file: ./Dockerfile
-          load: false
+          load: true
           push: false
           tags: nexusbus:dev
+
+      - name: Inspect image size
+        id: inspect-size
+        run: |
+          SIZE_BYTES=$(docker image inspect nexusbus:dev --format='{{.Size}}')
+          SIZE_MB=$(awk "BEGIN {printf \"%.2f\", $SIZE_BYTES/1024/1024}")
+          echo "size_bytes=$SIZE_BYTES" >> $GITHUB_OUTPUT
+          echo "size_mb=$SIZE_MB" >> $GITHUB_OUTPUT
+
+      - name: Report image size
+        run: |
+          echo "## Docker image size: ${{ steps.inspect-size.outputs.size_mb }} MB" >> $GITHUB_STEP_SUMMARY
